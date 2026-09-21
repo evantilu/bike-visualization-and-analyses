@@ -1,0 +1,10 @@
+{
+  "name": "bike-visualization-and-analyses",
+  "private": true,
+  "type": "module",
+  "description": "Browser-only GPX ride analysis and two-ride comparison with a virtual race",
+  "scripts": {
+    "test": "node tests/regress.mjs",
+    "serve": "python3 -m http.server 8000"
+  }
+}

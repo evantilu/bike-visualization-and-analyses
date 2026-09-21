@@ -1,0 +1,5 @@
+# Personal ride data and one-off analysis never go into the public repo
+private/
+.sync/
+node_modules/
+.DS_Store
