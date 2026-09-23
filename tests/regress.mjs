@@ -34,6 +34,18 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
   console.log('   segments', c.segments.map(s => `${(s.d0/1000).toFixed(2)}-${(s.d1/1000).toFixed(2)} ${s.grade.toFixed(1)}% Δ${(s.tR - s.tO).toFixed(0)}`).join(' | '));
   console.log('   bins', c.bins.map(b => `${b.label} ${b.vO.toFixed(1)}→${b.vR.toFixed(1)} (${b.dist}m)`).join(' | '));
 }
+// a ride with a frozen GPS fix that jumps 171 m, then a 276 s recording gap
+{
+  const p = fx('2026-09-23_ride.gpx');
+  if (existsSync(p)) {
+    const R = prepareRide(parseGPX(readFileSync(p, 'utf8')), { id: '2026-09-23' });
+    check('glitch ride: max speed is plausible', R.vmax, 43.8, 0.5);
+    check('glitch ride: jump is flagged', R.glitches.some(([a, b]) => a < 19155 && b > 19155) ? 1 : 0, 1, 0);
+    check('glitch ride: distance keeps the jump (as Strava does)', R.total / 1000, 23.27, 0.05);
+    check('glitch ride: 276 s recording gap counts as moving time', R.moving, 3066, 2);
+  } else console.log('SKIP glitch-ride checks (fixture missing)');
+}
+
 // order independence and self-comparison
 {
   const c = compareRides(B, A);

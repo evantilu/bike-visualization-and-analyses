@@ -57,11 +57,24 @@ export function prepareRide(gpx, meta = {}) {
     mstep[i] = isPause ? medDt : dt[i];
   }
   const mt = cumsum(mstep); // moving clock (s)
-  const v = windowSpeed(d, mt, 3);   // ~7 s centred (km/h)
-  const v1 = windowSpeed(d, mt, 1);  // ~3 s centred, for stop detection
+  // Implausible single steps: a frozen fix that jumps, or plain GPS noise. The displacement is
+  // kept in the ride distance (Strava counts it too), but it is left out of the speed series,
+  // otherwise one bad fix turns into a 100 km/h "max speed".
   const rawV = new Float64Array(n);
-  for (let i = 1; i < n; i++) rawV[i] = step[i] / Math.max(mstep[i], 1e-6) * 3.6;
-  const glitches = detectGlitches(d, rawV);
+  for (let i = 1; i < n; i++) rawV[i] = paused[i] ? 0 : step[i] / Math.max(mstep[i], 1e-6) * 3.6;
+  const bad = new Uint8Array(n);
+  for (let i = 1; i < n; i++) {
+    if (paused[i] || dt[i] > 2 * medDt || rawV[i] < 45) continue;
+    const loc = [];
+    for (let k = Math.max(1, i - 10); k <= Math.min(n - 1, i + 10); k++) if (k !== i && !paused[k] && dt[k] <= 2 * medDt) loc.push(rawV[k]);
+    const m = median(loc) || 1;
+    if (rawV[i] > 3 * m && rawV[i] > 60) bad[i] = 2;        // one fix jumped far ahead: also a glitch window
+    else if (rawV[i] > 2.0 * m) bad[i] = 1;                 // isolated noisy fix
+  }
+  const dMove = cumsum(Float64Array.from(step, (v2, i) => (paused[i] || bad[i] ? 0 : v2)));
+  const v = windowSpeed(dMove, mt, 3);   // ~7 s centred (km/h)
+  const v1 = windowSpeed(dMove, mt, 1);  // ~3 s centred, for stop detection
+  const glitches = detectGlitches(d, rawV, bad);
   const stops = detectStops(d, t, v1, paused, dt);
   // distance grid
   const total = d[n - 1];
@@ -145,17 +158,12 @@ export function inWindows(x, wins) { for (const [a, b] of wins) if (x >= a && x 
 
 // GPS jumps: a lagging fix that catches up shows up as >=2 near-consecutive 1-s steps far faster
 // than the neighbourhood (single-step jitter is left alone; the 7-s speed already smooths it).
-function detectGlitches(d, rawV) {
-  const n = d.length, spike = new Uint8Array(n);
-  for (let i = 1; i < n; i++) {
-    if (rawV[i] < 50) continue;
-    const loc = [];
-    for (let k = Math.max(1, i - 10); k <= Math.min(n - 1, i + 10); k++) if (k !== i) loc.push(rawV[k]);
-    if (rawV[i] > 1.6 * median(loc)) spike[i] = 1;
-  }
+function detectGlitches(d, rawV, spike) {
+  const n = d.length;
   const wins = [];
   for (let i = 1; i < n; i++) {
     if (!spike[i]) continue;
+    if (spike[i] === 2) { wins.push([d[i] - 150, d[i] + 80]); continue; }  // single teleport
     for (let k = i + 1; k <= Math.min(n - 1, i + 3); k++) if (spike[k]) { wins.push([d[i] - 150, d[k] + 80]); break; }
   }
   return mergeWindows(wins, 20);
