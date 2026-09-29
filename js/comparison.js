@@ -5,6 +5,7 @@ import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fi
 import { mountPlayer } from './player.js';
 import { tok, rgba, el, fmtTime, fmtDate, fmtSigned, diffColor } from './theme.js';
 import { interp, movingAvg } from './util.js';
+import { buildPowerCompare } from './powerview.js';
 
 const day = (r) => fmtDate(r.start).slice(0, 10);
 
@@ -135,6 +136,9 @@ export function buildCompare(host, cmp, { swap = false, onSwap } = {}) {
   const gEl = el('div', { class: 'bars' }); gSec.append(gEl); host.append(gSec);
   groupedBars(gEl, { cats: bins.map(b => [b.label, `${(b.dist / 1000).toFixed(1)} km`]), series: [{ name: '紅', color: RED, values: bins.map(b => b.vr) }, { name: '藍', color: BLUE, values: bins.map(b => b.vb) }],
     above: bins.map(b => ({ text: fmtSigned(b.vb - b.vr, 1) + ' km/h' })), yLabel: '平均速度 km/h', height: 280 });
+
+  // ---- power comparison
+  buildPowerCompare(host, cmp, { blueRole, nameB, nameR });
 
   // ---- virtual race
   const pSec = el('section', { class: 'rsec' }, el('h2', {}, '虛擬對騎'), el('p', { class: 'lead' }, '兩趟放在同一條路線上同時出發；不比較的路段兩個點都直接跳過，時間差照樣延續。'));

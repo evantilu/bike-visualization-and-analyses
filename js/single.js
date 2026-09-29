@@ -5,6 +5,7 @@ import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fi
 import { mountPlayer } from './player.js';
 import { tok, rgba, el, fmtTime, fmtDate, speedColor, SPEED_RAMP_STOPS } from './theme.js';
 import { inWindows } from './ride.js';
+import { buildPowerSection } from './powerview.js';
 
 const clsColor = (c) => c.key.includes('up') ? tok('up') : c.key.includes('down') ? tok('down') : tok('flat');
 
@@ -68,6 +69,9 @@ export function buildSingle(host, ride) {
     tipExtra: (i) => `坡度 ${G.grade[i].toFixed(1)}%`,
     onHover: (k) => { cursorKm = k; ovl.redraw(); } });
   chart.draw();
+
+  // ---- power estimate
+  buildPowerSection(host, ride);
 
   // ---- segments
   const segSec = el('section', { class: 'rsec' }, el('h2', {}, '自動分段'),

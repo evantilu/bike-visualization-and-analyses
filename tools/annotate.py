@@ -1,6 +1,6 @@
 """Draw lettered call-outs on the raw README screenshots.
 
-usage: python3 tools/annotate.py RAW_DIR OUT_DIR
+usage: python3 tools/annotate.py RAW_DIR OUT_DIR [name,name,...]   (default: all)
 Coordinates are CSS pixels of the 1200-px-wide capture (raw PNGs are at device scale 2).
 Each call-out: target = rect [x, y, w, h] or point (x, y); optional `at` = label position
 (left-middle of the label); without `at`, a rect's label sits on its top-left edge.
@@ -50,6 +50,23 @@ SPEC = {
   dict(k='C', rect='fc', label='跟隨鏡頭'),
   dict(k='D', rect='controls', label='播放／暫停、時間軸、播放速度、路線上色'),
   dict(k='E', rect='pf', label='海拔剖面：點一下就跳到那個位置'),
+ ],
+ '15_power_settings': [
+  dict(k='A', rect='rider', label='騎士體重（必填）', at=(45, 330)),
+  dict(k='B', rect='bike', label='車輛設定（可存多台）', at=(45, 400)),
+  dict(k='C', rect='ride', label='這一趟的狀況', at=(830, 608)),
+  dict(k='D', rect='chips', label='設定摘要（列印時也會顯示）', at=(572, 92)),
+ ],
+ '16_power_results': [
+  dict(k='A', rect='tiles', label='摘要：數字＋90% 範圍；給不出來時會寫原因', at=(372, 120)),
+  dict(k='B', rect='bar', label='藍條＝90% 範圍，黑線＝最可能值', at=(110, 200)),
+  dict(k='C', rect='tier', label='可信度：±8% 內可信、±15% 內參考', at=(820, 152)),
+ ],
+ '17_power_route': [
+  dict(k='A', rect='tip', label='滑鼠移入：這一點的功率與範圍', at=(362, 45)),
+  dict(k='B', pt=(888, 151), label='藍線＝最可能值，淺藍帶＝90% 範圍', at=(700, 285)),
+  dict(k='C', rect=[216, 112, 402, 186], label='灰底＝誤差太大，不給數字', at=(260, 250)),
+  dict(k='D', rect='budget', label='誤差從哪來：哪一項最影響結果', at=(600, 520)),
  ],
  '20_cmp_summary': [
   dict(k='A', rect='box', label='結論：可比路段誰快、快幾秒', at=(930, 92)),
@@ -155,7 +172,9 @@ def main():
     raw, out = sys.argv[1], sys.argv[2]
     os.makedirs(out, exist_ok=True)
     boxes = json.load(open(os.path.join(raw, 'boxes.json')))
+    only = set(sys.argv[3].split(',')) if len(sys.argv) > 3 else None
     for name, spec in SPEC.items():
+        if only and name not in only: continue
         img = annotate(os.path.join(raw, name + '.png'), spec, boxes[name]['marks'])
         mapish = any(k in name for k in ('map', 'align', 'race', 'replay', 'profile'))
         dst = os.path.join(out, name + ('.jpg' if mapish else '.png'))

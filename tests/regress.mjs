@@ -4,8 +4,20 @@ import { parseGPX } from '../js/gpx.js';
 import { prepareRide } from '../js/ride.js';
 import { compareRides } from '../js/compare.js';
 import { interp } from '../js/util.js';
+import { analyzePower, compareClimbs, paramRanges } from '../js/power.js';
 const fx = (f) => new URL('../private/fixtures/' + f, import.meta.url);
-if (!existsSync(fx('2025-09-21_before.gpx'))) { console.log('SKIP: private fixtures missing'); process.exit(0); }
+// physics sanity check on a synthetic ride (always runs): 25 min at 11 km/h up a steady 7 % grade
+{
+  const pts = [], t0 = Date.UTC(2026, 8, 28), v = 11 / 3.6; let d = 0, z = 100;
+  for (let i = 0; i <= 1500; i++) { pts.push({ lat: 24.8 + d / 111320, lon: 121, ele: z, t: t0 + i * 1000 }); d += v; z += v * 0.07; }
+  const P = analyzePower(prepareRide({ name: 'synthetic', points: pts }, {}), { rider: { massKit: 70 },
+    bike: { id: 'x', mass: 8, tire: 'race', tube: 'light', psi: 90, chain: 'normal' }, ride: { climbPos: 'hoods', flatPos: 'hoods', wind: 'none', tempC: 20, drafting: 'no' } });
+  const c = P.climbs[0];
+  const ok = c && Math.abs(c.med - 185) <= 3 && c.tier === 'good' && P.ftp && P.ftp.lo > 150 && P.ftp.hi < 185;
+  console.log(`${ok ? 'PASS' : 'FAIL'} synthetic 7 % climb: ${c ? Math.round(c.med) : '—'} W (want 185 ±3, tier good) FTP ${P.ftp ? Math.round(P.ftp.lo) + '–' + Math.round(P.ftp.hi) : '—'}`);
+  if (!ok) process.exitCode = 1;
+}
+if (!existsSync(fx('2025-09-21_before.gpx'))) { console.log('SKIP: private fixtures missing'); process.exit(process.exitCode || 0); }
 const B = prepareRide(parseGPX(readFileSync(fx('2025-09-21_before.gpx'), 'utf8')), { id: 'before' });
 const A = prepareRide(parseGPX(readFileSync(fx('2026-09-21_after.gpx'), 'utf8')), { id: 'after' });
 let fails = 0;
@@ -56,5 +68,37 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
   check('self-compare gap', s.T.R[s.T.R.length - 1] - s.T.O[s.T.O.length - 1], 0, 0.5);
   check('self-compare coverage km', s.compLen / 1000, 11.2, 0.3);
 }
+
+// power estimation (numbers from the 2026-09-28 hand analysis with the rider's own inputs)
+{
+  const p = fx('2026-09-28_xinpu.gpx');
+  if (existsSync(p)) {
+    const X = prepareRide(parseGPX(readFileSync(p, 'utf8')), { id: '2026-09-28' });
+    const S = { rider: { massKit: 68.8 }, bike: { id: 'caad10', mass: 7.75, tire: 'race', tube: 'light', chain: 'normal' },
+      ride: { climbPos: 'tops', flatPos: 'unknown', wind: 'none', tempC: 31, drafting: 'no' } };
+    const P = analyzePower(X, S);
+    check('power: two climbs found', P.climbs.length, 2, 0);
+    const [c1, c2] = P.climbs;
+    check('power: outbound climb (3 min) W', c1.med, 222, 4); check('power: outbound climb tier good', c1.tier === 'good' ? 1 : 0, 1, 0);
+    check('power: outbound climb ±%', c1.half * 100, 6, 1.5);
+    check('power: return climb (6 min) W', c2.med, 191, 4); check('power: return climb tier good', c2.tier === 'good' ? 1 : 0, 1, 0);
+    check('power: descent sprint window is not estimated', P.best[300]?.tier === 'none' ? 1 : 0, 1, 0);
+    check('power: no 20-min window across the break / recording gap', P.best[1200] ? 0 : 1, 1, 0);
+    check('power: no FTP without a long reliable climb', P.ftp ? 0 : 1, 1, 0);
+    check('power: basemap elevation detected as smooth', P.K.dhSd, 1.5, 0);
+    const P2 = analyzePower(X, S);
+    check('power: deterministic', P2.climbs[0].med - c1.med, 0, 0);
+    check('power: needs the rider weight', analyzePower(X, { ...S, rider: {} }).ok ? 0 : 1, 1, 0);
+    check('power: unknown inputs widen the range', analyzePower(X, { rider: { massKit: 68.8 } }).climbs[0].half * 100, 12, 5);
+    const cc = compareClimbs(X, S, X, S, P.climbs.map(c => ({ a: [c.i0, c.i1], b: [c.i0, c.i1] })));
+    check('power: same climb vs itself ~0 %', cc.rows[0].diff.med, 0, 1);
+  } else console.log('SKIP power checks (fixture missing)');
+  const Sflat = { rider: { massKit: 72 }, bike: { id: 'caad10', mass: 7.17, tire: 'race', tube: 'unknown', chain: 'normal' }, ride: { climbPos: 'unknown', flatPos: 'mixed', wind: 'unknown', tempC: 30, drafting: 'no' } };
+  const W = analyzePower(A, Sflat).whole;
+  check('power: flat out-and-back whole-ride W', W.med, 165, 6); check('power: flat whole ride only "fair"', W.tier === 'fair' ? 1 : 0, 1, 0);
+  check('power: drafting hides the flat estimate', analyzePower(A, { ...Sflat, ride: { ...Sflat.ride, drafting: 'yes' } }).whole.tier === 'none' ? 1 : 0, 1, 0);
+  check('power: air density at 31 °C, ~100 m', paramRanges({ rider: { massKit: 70 }, ride: { tempC: 31 } }, { eleMin: 55, eleMax: 144 }).p.rho.reduce((a, b) => a + b) / 2, 1.144, 0.005);
+}
+if (process.exitCode) fails++; // the synthetic check above
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASSED');
 process.exit(fails ? 1 : 0);
