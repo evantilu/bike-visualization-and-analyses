@@ -25,15 +25,31 @@ function methodNotes() {
 }
 
 // top hint + bottom action row of a settings form. Results update by themselves; the button just
-// folds the form away and jumps to them, and the status line confirms each recalculation.
+// folds the form away and jumps to them. The status line confirms each recalculation, or says
+// what is still missing (and the required field gets an orange frame) when nothing can be computed.
 function formChrome(form, res) {
   const status = el('span', { class: 'fstatus', 'aria-live': 'polite' });
   const btn = el('button', { class: 'btn primary', type: 'button', onclick: () => { form.open = false; res.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, '看估算結果 ↓');
   form.insertBefore(el('p', { class: 'fh fhint' }, '不用按開始：每改一個欄位，下方的結果就會自動重新計算。'), form.children[1] || null);
   form.append(el('div', { class: 'factions' }, status, btn));
-  const stamp = () => { const d = new Date(); status.textContent = `已依目前設定更新（${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}）`; };
-  return { stamp };
+  let need = null;
+  const hms = () => { const d = new Date(); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(v => String(v).padStart(2, '0')).join(':'); };
+  const show = (stamped) => {
+    form.querySelectorAll('[data-req]').forEach(i => i.classList.toggle('need', !!need));
+    status.classList.toggle('warn', !!need);
+    status.textContent = need || (stamped ? `已依目前設定更新（${hms()}）` : '');
+  };
+  return { need: (msg) => { need = msg; show(false); }, stamp: () => show(true) };
 }
+
+// what to tell the rider when the estimate cannot run (only the weight blocks it)
+function needWeight(S) {
+  const v = S.rider.massKit;
+  return v != null && v !== '' ? '人＋裝備重量要在 30–200 kg 之間' : '還缺：人＋裝備重量（必填）';
+}
+const needBox = (S) => el('div', { class: 'box' }, S.rider.massKit != null && S.rider.massKit !== ''
+  ? '「騎乘設定」裡的人＋裝備重量要在 30–200 kg 之間，改好後結果會自動出現在這裡。'
+  : '先在上面的「騎乘設定」填入人＋裝備重量，結果就會自動出現在這裡。');
 
 // ---------------------------------------------------------------- single ride
 export function buildPowerSection(host, ride) {
@@ -57,7 +73,8 @@ export function buildPowerSection(host, ride) {
     chips.innerHTML = ''; chips.append(...summaryChips(S, ride).map(c => el('span', { class: 'chip' }, c)));
     res.innerHTML = '';
     const A = analyzePower(ride, settingsFor(S, ride));
-    if (!A.ok) { res.append(el('div', { class: 'box' }, '先在上面的「騎乘設定」填入人＋裝備重量，結果就會自動出現在這裡。')); form.open = true; return; }
+    if (!A.ok) { res.append(needBox(S)); chrome.need(needWeight(S)); form.open = true; return; }
+    chrome.need(null);
     const climbs = A.climbs;
     const shown = climbs.filter(c => c.tier !== 'none');
     const bestClimb = shown.slice().sort((a, b) => b.med - a.med)[0];
@@ -191,7 +208,8 @@ export function buildPowerCompare(host, cmp, { blueRole, nameB, nameR }) {
     // A = red (earlier by default), B = blue: diff = blue vs red
     const rolePairs = pairs.map(p => ({ ...p, a: blueRole === 'R' ? p.o : p.r, b: blueRole === 'R' ? p.r : p.o }));
     const C = compareClimbs(red, setR, blue, setB, rolePairs);
-    if (!C.ok) { res.append(el('div', { class: 'box' }, '先在上面的「騎乘設定」填入人＋裝備重量，結果就會自動出現在這裡。')); form.open = true; return; }
+    if (!C.ok) { res.append(needBox(S)); chrome.need(needWeight(S)); form.open = true; return; }
+    chrome.need(null);
     const cond = [C.sameBike ? '兩趟同一台車' : '兩趟車輛設定不同（輪胎、傳動的差異抵消不掉）', C.samePos ? '爬坡握法相同' : '爬坡握法不同或未填'];
     res.append(el('p', { class: 'note' }, cond.join('，') + '。'));
     const climbRows = C.rows.filter(r => r.mode !== 'clipped');
