@@ -102,7 +102,8 @@ def capture_power(pg, shot, hover):
         pg.click('#goBtn'); pg.wait_for_timeout(4500)
         pg.locator('#power details.fbox').evaluate('e => e.open = true'); pg.wait_for_timeout(300)
         shot('15_power_settings', ('#power h2', 0), ('#power details.fbox', 0), {
-            'chips': ('#power .chips', 0), 'rider': ('#power .fcol', 0), 'bike': ('#power .fcol', 1), 'ride': ('#power .fcol', 2)})
+            'chips': ('#power .chips', 0), 'rider': ('#power .fcol', 0), 'bike': ('#power .fcol', 1), 'ride': ('#power .fcol', 2),
+            'hint': ('#power .fhint', 0), 'go': ('#power .factions button', 0)})
         pg.locator('#power details.fbox').evaluate('e => e.open = false'); pg.wait_for_timeout(300)
         shot('16_power_results', ('#power .tiles', 0), ('#power .plist', 0), {
             'tiles': ('#power .tiles', 0), 'tile0': ('#power .tiles .tile', 0), 'tile1': ('#power .tiles .tile', 1), 'tile2': ('#power .tiles .tile', 2), 'tile3': ('#power .tiles .tile', 3),

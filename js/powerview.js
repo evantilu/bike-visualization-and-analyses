@@ -24,6 +24,17 @@ function methodNotes() {
       el('li', {}, '功率是踏板／曲柄端的功率（和大部分功率計量的位置相同），已經把傳動損耗算回去。')));
 }
 
+// top hint + bottom action row of a settings form. Results update by themselves; the button just
+// folds the form away and jumps to them, and the status line confirms each recalculation.
+function formChrome(form, res) {
+  const status = el('span', { class: 'fstatus', 'aria-live': 'polite' });
+  const btn = el('button', { class: 'btn primary', type: 'button', onclick: () => { form.open = false; res.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, '看估算結果 ↓');
+  form.insertBefore(el('p', { class: 'fh fhint' }, '不用按開始：每改一個欄位，下方的結果就會自動重新計算。'), form.children[1] || null);
+  form.append(el('div', { class: 'factions' }, status, btn));
+  const stamp = () => { const d = new Date(); status.textContent = `已依目前設定更新（${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}）`; };
+  return { stamp };
+}
+
 // ---------------------------------------------------------------- single ride
 export function buildPowerSection(host, ride) {
   const S = loadSettings();
@@ -33,8 +44,10 @@ export function buildPowerSection(host, ride) {
   const form = el('details', { class: 'fbox noprint' }, el('summary', {}, '騎乘設定（只記在這台瀏覽器）'));
   const res = el('div', { class: 'pres' });
   let timer = null;
-  const schedule = () => { clearTimeout(timer); timer = setTimeout(renderResults, 180); };
+  let chrome = null;
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { renderResults(); chrome.stamp(); }, 180); };
   form.append(el('div', { class: 'fgrid' }, ...riderBikeForm(S, schedule, { rideForBike: ride }).children, rideForm(S, ride, schedule)));
+  chrome = formChrome(form, res);
   sec.append(el('h2', {}, '功率估算'),
     el('p', { class: 'lead' }, '沒有功率計時，用速度、坡度和你的重量反推功率。只有誤差夠小的路段才給數字；設定填得越完整，範圍越窄。'),
     chips, form, res);
@@ -44,7 +57,7 @@ export function buildPowerSection(host, ride) {
     chips.innerHTML = ''; chips.append(...summaryChips(S, ride).map(c => el('span', { class: 'chip' }, c)));
     res.innerHTML = '';
     const A = analyzePower(ride, settingsFor(S, ride));
-    if (!A.ok) { res.append(el('div', { class: 'box' }, '先在上面的「騎乘設定」填入人＋裝備重量，才能開始估算。')); form.open = true; return; }
+    if (!A.ok) { res.append(el('div', { class: 'box' }, '先在上面的「騎乘設定」填入人＋裝備重量，結果就會自動出現在這裡。')); form.open = true; return; }
     const climbs = A.climbs;
     const shown = climbs.filter(c => c.tier !== 'none');
     const bestClimb = shown.slice().sort((a, b) => b.med - a.med)[0];
@@ -140,12 +153,14 @@ export function buildPowerCompare(host, cmp, { blueRole, nameB, nameR }) {
   const form = el('details', { class: 'fbox noprint' }, el('summary', {}, '騎乘設定（只記在這台瀏覽器）'));
   const res = el('div', { class: 'pres' });
   let timer = null;
-  const schedule = () => { clearTimeout(timer); timer = setTimeout(renderResults, 180); };
+  let chrome = null;
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(() => { renderResults(); chrome.stamp(); }, 180); };
   const grid = el('div', { class: 'fgrid' }); form.append(grid);
   let rf = [];
   const buildRideForms = () => { rf.forEach(n => n.remove()); rf = [rideForm(S, blue, schedule, `藍（${nameB}）`, { withBike: true }), rideForm(S, red, schedule, `紅（${nameR}）`, { withBike: true })]; grid.append(...rf); };
   grid.append(...riderBikeForm(S, schedule, { onBikesChanged: () => { buildRideForms(); schedule(); } }).children);
   buildRideForms();
+  chrome = formChrome(form, res);
   sec.append(el('h2', {}, '功率比較'),
     el('p', { class: 'lead' }, '同一段路騎兩次，比的是「這次比上次多出幾 %」。同一台車、同樣握法時，大部分算不準的因素兩趟一樣，會互相抵消，所以百分比比單看瓦數準得多。'),
     form, res);
@@ -176,7 +191,7 @@ export function buildPowerCompare(host, cmp, { blueRole, nameB, nameR }) {
     // A = red (earlier by default), B = blue: diff = blue vs red
     const rolePairs = pairs.map(p => ({ ...p, a: blueRole === 'R' ? p.o : p.r, b: blueRole === 'R' ? p.r : p.o }));
     const C = compareClimbs(red, setR, blue, setB, rolePairs);
-    if (!C.ok) { res.append(el('div', { class: 'box' }, '先在上面的「騎乘設定」填入人＋裝備重量，才能開始估算。')); form.open = true; return; }
+    if (!C.ok) { res.append(el('div', { class: 'box' }, '先在上面的「騎乘設定」填入人＋裝備重量，結果就會自動出現在這裡。')); form.open = true; return; }
     const cond = [C.sameBike ? '兩趟同一台車' : '兩趟車輛設定不同（輪胎、傳動的差異抵消不掉）', C.samePos ? '爬坡握法相同' : '爬坡握法不同或未填'];
     res.append(el('p', { class: 'note' }, cond.join('，') + '。'));
     const climbRows = C.rows.filter(r => r.mode !== 'clipped');

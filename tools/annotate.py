@@ -52,10 +52,11 @@ SPEC = {
   dict(k='E', rect='pf', label='海拔剖面：點一下就跳到那個位置'),
  ],
  '15_power_settings': [
-  dict(k='A', rect='rider', label='騎士體重（必填）', at=(45, 330)),
-  dict(k='B', rect='bike', label='車輛設定（可存多台）', at=(45, 400)),
-  dict(k='C', rect='ride', label='這一趟的狀況', at=(830, 608)),
+  dict(k='A', rect='rider', label='騎士體重（必填）', at=(45, 356)),
+  dict(k='B', rect='bike', label='車輛設定（可存多台）', at=(45, 426)),
+  dict(k='C', rect='ride', label='這一趟的狀況', at=(830, 634)),
   dict(k='D', rect='chips', label='設定摘要（列印時也會顯示）', at=(572, 92)),
+  dict(k='E', rect='go', label='改了就自動重算；按這裡收起設定、跳到結果', at=(430, 701)),
  ],
  '16_power_results': [
   dict(k='A', rect='tiles', label='摘要：數字＋90% 範圍；給不出來時會寫原因', at=(372, 120)),
