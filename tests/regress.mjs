@@ -17,15 +17,15 @@ const fx = (f) => new URL('../private/fixtures/' + f, import.meta.url);
   console.log(`${ok ? 'PASS' : 'FAIL'} synthetic 7 % climb: ${c ? Math.round(c.med) : '—'} W (want 185 ±3, tier good) FTP ${P.ftp ? Math.round(P.ftp.lo) + '–' + Math.round(P.ftp.hi) : '—'}`);
   if (!ok) process.exitCode = 1;
 }
-// same climb with 30 s standing still (device recording, no auto-pause) in the middle: like Strava,
-// that time is moving time, but no best-20-min window may span the rest
+// same climb with 30 s standing still (device recording, no auto-pause) in the middle: that time is
+// not moving time, and no best-20-min window may span the rest
 {
   const pts = [], t0 = Date.UTC(2026, 8, 28), v = 11 / 3.6; let d = 0, z = 100;
   for (let i = 0; i <= 1530; i++) { pts.push({ lat: 24.8 + d / 111320, lon: 121, ele: z, t: t0 + i * 1000 }); if (i < 700 || i >= 730) { d += v; z += v * 0.07; } }
   const R = prepareRide({ name: 'synthetic stop', points: pts }, {});
   const P = analyzePower(R, { rider: { massKit: 70 }, bike: { id: 'x', mass: 8, tire: 'race', tube: 'light', psi: 90, chain: 'normal' }, ride: { climbPos: 'hoods', flatPos: 'hoods', wind: 'none', tempC: 20, drafting: 'no' } });
-  const ok = Math.abs(R.moving - 1530) <= 1 && !P.best[1200] && !P.ftp;
-  console.log(`${ok ? 'PASS' : 'FAIL'} synthetic 30 s standing still: moving ${R.moving.toFixed(0)} s (want 1530), best 20 min ${P.best[1200] ? 'found' : 'none'} (want none), FTP ${P.ftp ? 'given' : 'none'} (want none)`);
+  const ok = Math.abs(R.moving - 1500) <= 3 && !P.best[1200] && !P.ftp;
+  console.log(`${ok ? 'PASS' : 'FAIL'} synthetic 30 s standing still: moving ${R.moving.toFixed(0)} s (want 1500 ±3), best 20 min ${P.best[1200] ? 'found' : 'none'} (want none), FTP ${P.ftp ? 'given' : 'none'} (want none)`);
   if (!ok) process.exitCode = 1;
 }
 if (!existsSync(fx('2025-09-21_before.gpx'))) { console.log('SKIP: private fixtures missing'); process.exit(process.exitCode || 0); }
@@ -33,8 +33,9 @@ const B = prepareRide(parseGPX(readFileSync(fx('2025-09-21_before.gpx'), 'utf8')
 const A = prepareRide(parseGPX(readFileSync(fx('2026-09-21_after.gpx'), 'utf8')), { id: 'after' });
 let fails = 0;
 const check = (label, got, want, tol) => { const ok = Math.abs(got - want) <= tol; if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'} ${label}: ${got.toFixed(1)} (want ${want} ±${tol})`); };
-// moving time = Strava's: pauses never count, standing still while recording does (34:36, 23:55)
-check('before moving time', B.moving, 2076, 1); check('after moving time', A.moving, 1435, 1);
+// moving time: neither pauses nor standing still while recording count. Strava counts the standing
+// still seconds, so each expected value below is Strava's moving time minus them (17 s, 11 s, …)
+check('before moving time (Strava 34:36 − 17 s)', B.moving, 2059, 1); check('after moving time (Strava 23:55 − 11 s)', A.moving, 1424, 1);
 check('after max speed', A.vmax, 45.9, 0.3); check('before max speed', B.vmax, 40.4, 0.3);
 const stopA = A.stops.find(s => Math.abs(s.d - 4850) < 30); check('after stop duration', stopA ? stopA.dur : -1, 28, 1);
 for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940, 11400]]], ['auto sections', null]]) {
@@ -48,11 +49,12 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
   const gapAdj = c.Tadj.R[c.Tadj.R.length - 1] - c.Tadj.O[c.Tadj.O.length - 1];
   const gapAdjJ = (c.Tadj.R[c.Tadj.R.length - 1] - c.Tadj.R[j]) - (c.Tadj.O[c.Tadj.O.length - 1] - c.Tadj.O[j]);
   const tol = secs ? 1.0 : 4.0;
-    check(label + ' gap from start', gap, -32.9, tol); check(label + ' gap from junction', gapJ, -18.6, tol);
-  check(label + ' adjusted from start', gapAdj, -53.4, tol + 1); check(label + ' adjusted from junction', gapAdjJ, -39.1, tol + 1);
+    // after stood still 11 s at 4.85 km (inside D3): not counted (with it: −32.9 / −18.6, D3 +16.1)
+  check(label + ' gap from start', gap, -44.1, tol); check(label + ' gap from junction', gapJ, -29.8, tol);
+  check(label + ' adjusted from start', gapAdj, -55.0, tol + 1); check(label + ' adjusted from junction', gapAdjJ, -40.7, tol + 1);
   if (secs) {
     const segT = (a, b) => (interp(b, c.grid, c.T.R) - interp(a, c.grid, c.T.R)) - (interp(b, c.grid, c.T.O) - interp(a, c.grid, c.T.O));
-    for (const [n, a, b, want] of [['D1', 930, 1800, 11.3], ['D2', 1800, 4000, 2.9], ['D3', 4000, 5640, 16.1], ['C1', 5940, 7600, -14.1], ['C2', 7600, 9300, -9.4], ['C3', 9300, 10490, -16.1], ['收尾', 10490, 11400, -9.3]]) check('segment ' + n, segT(a, b), want, 1.0);
+    for (const [n, a, b, want] of [['D1', 930, 1800, 11.3], ['D2', 1800, 4000, 2.9], ['D3', 4000, 5640, 5.0], ['C1', 5940, 7600, -14.1], ['C2', 7600, 9300, -9.4], ['C3', 9300, 10490, -16.1], ['收尾', 10490, 11400, -9.3]]) check('segment ' + n, segT(a, b), want, 1.0);
   }
   console.log('   stops', c.stops.map(s => `${s.who}@${(s.s/1000).toFixed(2)} cost=${(s.cost ?? 0).toFixed(1)}`).join(' '), ' glitches', JSON.stringify(c.glitches.map(w => w.map(Math.round))));
   console.log('   segments', c.segments.map(s => `${(s.d0/1000).toFixed(2)}-${(s.d1/1000).toFixed(2)} ${s.grade.toFixed(1)}% Δ${(s.tR - s.tO).toFixed(0)}`).join(' | '));
@@ -67,7 +69,7 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
     check('glitch ride: jump is flagged', R.glitches.some(([a, b]) => a < 19155 && b > 19155) ? 1 : 0, 1, 0);
     // Strava: 45:24, 22.56 km. The 276 s and 68 s gaps (390 m, 69 m) are pauses, time and distance;
     // the remaining 0.2 km is the 171 m frozen-fix jump, which we still count
-    check('glitch ride: moving time = Strava 45:24', R.moving, 2724, 3);
+    check('glitch ride: moving time (Strava 45:24 − 23 s standing still)', R.moving, 2701, 3);
     check('glitch ride: distance (Strava 22.56 + the 171 m jump)', R.total / 1000, 22.76, 0.05);
   } else console.log('SKIP glitch-ride checks (fixture missing)');
 }
@@ -77,14 +79,14 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
   const p = fx('2026-10-03_guanxi_out.gpx'), q = fx('2026-10-03_guanxi_back.gpx'), x = fx('2026-09-28_xinpu.gpx');
   if (existsSync(p) && existsSync(q) && existsSync(x)) {
     const G = prepareRide(parseGPX(readFileSync(p, 'utf8')), { id: 'out' }), H = prepareRide(parseGPX(readFileSync(q, 'utf8')), { id: 'back' });
-    check('paused warm-up: moving time = Strava 33:12', G.moving, 1992, 3);
+    check('paused warm-up: moving time (Strava 33:12 − 9 s standing still)', G.moving, 1984, 3);
     check('paused warm-up: distance ≈ Strava 13.99 km', G.total / 1000, 13.99, 0.1);
     check('paused warm-up: no fake ramp at the jump (max grade %)', Math.max(...G.grid.grade.subarray(0, 30)), 3, 3);
-    check('way back: moving time = Strava 30:28', H.moving, 1828, 3);
+    check('way back: moving time (Strava 30:28 − 14 s standing still)', H.moving, 1814, 3);
     let err = ''; try { err = compareRides(G, H).error || 'none'; } catch (e) { err = 'throws'; }
     check('out vs back (opposite directions) gives a message, not a crash', err === 'direction' ? 1 : 0, 1, 0);
     const X = prepareRide(parseGPX(readFileSync(x, 'utf8')), { id: '0928' });
-    check('9/28: moving time = Strava 23:39 (rest, then paused while riding 1 km)', X.moving, 1419, 3);
+    check('9/28: moving time (Strava 23:39 − 27 s standing still; rest, then paused while riding 1 km)', X.moving, 1394, 4);
     check('9/28: distance ≈ Strava 11.21 km', X.total / 1000, 11.21, 0.1);
   } else console.log('SKIP pause checks (fixtures missing)');
 }
@@ -94,7 +96,7 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
   const c = compareRides(B, A);
   const gap = c.T.R[c.T.R.length - 1] - c.T.O[c.T.O.length - 1];
   check('swapped input picks after as reference', c.R.id === 'after' ? 1 : 0, 1, 0);
-  check('swapped input gap', gap, -36.2, 0.5);
+  check('swapped input gap', gap, -47.0, 0.5);
   const s = compareRides(A, A);
   check('self-compare gap', s.T.R[s.T.R.length - 1] - s.T.O[s.T.O.length - 1], 0, 0.5);
   check('self-compare coverage km', s.compLen / 1000, 11.2, 0.3);

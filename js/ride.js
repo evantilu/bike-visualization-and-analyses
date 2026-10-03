@@ -62,7 +62,7 @@ export function prepareRide(gpx, meta = {}) {
     mstep[i] = isPause ? medDt : dt[i];
   }
   const d = cumsum(Float64Array.from(step, (s, i) => (paused[i] ? 0 : s)));
-  const mt = cumsum(mstep); // moving clock (s)
+  const mtP = cumsum(mstep); // clock without the pauses (s); speeds are measured on it
   // Implausible single steps: a frozen fix that jumps, or plain GPS noise. The displacement is
   // kept in the ride distance (Strava seems not to count it: 0.2 km more than Strava on 2026-09-23),
   // but it is left out of the speed series, otherwise one bad fix turns into a 100 km/h "max speed".
@@ -78,10 +78,13 @@ export function prepareRide(gpx, meta = {}) {
     else if (rawV[i] > 2.0 * m) bad[i] = 1;                 // isolated noisy fix
   }
   const dMove = cumsum(Float64Array.from(step, (v2, i) => (paused[i] || bad[i] ? 0 : v2)));
-  const v = windowSpeed(dMove, mt, 3);   // ~7 s centred (km/h)
-  const v1 = windowSpeed(dMove, mt, 1);  // ~3 s centred, for stop detection
+  const v = windowSpeed(dMove, mtP, 3);   // ~7 s centred (km/h)
+  const v1 = windowSpeed(dMove, mtP, 1);  // ~3 s centred, for stop detection
   const glitches = detectGlitches(d, rawV, bad);
   const { stops, still } = detectStops(d, t, v1, paused, dt);
+  // moving clock (s): neither pauses nor standing still while the device keeps recording count
+  // (Strava counts the standing-still seconds, so this can be a few seconds shorter than Strava's)
+  const mt = cumsum(Float64Array.from(mstep, (m, i) => (still[i] ? 0 : m)));
   // distance grid
   const total = d[n - 1];
   const gd = [];
@@ -199,8 +202,7 @@ export function mergeWindows(wins, gap = 0) {
 
 // Stops: consecutive samples that are stationary (<2 km/h over ~3 s) or paused. Returns the stops
 // (≥ 5 s, merged when closer than 25 m) and a per-sample mask of the time spent standing still while
-// the device kept recording (this time counts as moving time, as on Strava; paused samples are not
-// in the mask).
+// the device kept recording (not moving time; paused samples are not in the mask).
 function detectStops(d, t, v1, paused, dt) {
   const n = d.length, stops = [], still = new Uint8Array(n);
   let i = 0;

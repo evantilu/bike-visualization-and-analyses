@@ -100,8 +100,8 @@ export function buildSingle(host, ride) {
 
   // ---- stops
   if (ride.stops.length) {
-    host.append(el('section', { class: 'rsec' }, el('h2', {}, '停車紀錄'),
-      el('div', { class: 'tablewrap' }, el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, '位置'), el('th', { class: 'n' }, '總停留'), el('th', { class: 'n' }, '停在原地（計入移動時間）'), el('th', { class: 'n' }, '暫停（不計入）'))),
+    host.append(el('section', { class: 'rsec' }, el('h2', {}, '停車紀錄'), el('p', { class: 'lead' }, '停留 5 秒以上的地方。停在原地和暫停的時間都不計入移動時間。'),
+      el('div', { class: 'tablewrap' }, el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, '位置'), el('th', { class: 'n' }, '總停留'), el('th', { class: 'n' }, '停在原地'), el('th', { class: 'n' }, '暫停'))),
         el('tbody', {}, ride.stops.map(s => el('tr', {}, el('td', {}, `${(s.d / 1000).toFixed(2)} km`), el('td', { class: 'n' }, fmtTime(s.dur)), el('td', { class: 'n' }, fmtTime(s.still)), el('td', { class: 'n' }, fmtTime(s.paused)))))))));
   }
 
@@ -116,7 +116,7 @@ export function buildSingle(host, ride) {
     colorAt: (s) => speedColor(G.v[Math.min(G.v.length - 1, Math.round(s / GRID))], vlo, vhi),
     note: ({ pos, done }) => {
       if (done[0]) return `完成：${(ride.total / 1000).toFixed(2)} km，移動時間 ${fmtTime(ride.moving)}。`;
-      const st = ride.stops.find(s => Math.abs(s.d - pos[0]) < 40); if (st) return `在 ${(st.d / 1000).toFixed(2)} km 停車：共 ${fmtTime(st.dur)}（暫停 ${fmtTime(st.paused)} 不計入移動時間）。`;
+      const st = ride.stops.find(s => Math.abs(s.d - pos[0]) < 40); if (st) return `在 ${(st.d / 1000).toFixed(2)} km 停車 ${fmtTime(st.dur)}（不計入移動時間，回放直接跳過）。`;
       if (inWindows(pos[0], ride.glitches)) return '這段 GPS 飄移，速度讀數不準。';
       const sg = segs.find(s => pos[0] >= s.d0 && pos[0] <= s.d1); return sg ? `分段 #${sg.name}：${sg.cls.label} ${sg.grade >= 0 ? '+' : ''}${sg.grade.toFixed(1)}%，這段平均 ${sg.v.toFixed(1)} km/h。` : '';
     },
