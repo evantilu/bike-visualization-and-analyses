@@ -10,10 +10,12 @@ const DETOUR_MARGIN = 50; // m either side of a place where one rider left and r
 const MIN_SECTION = 100;  // m
 
 // ---------- spatial index over a polyline's segments ----------
-function buildIndex(X, Y, cell = 50) {
+// skip[i + 1] = 1 leaves out the segment i → i + 1 (a pause: the straight line is not the road)
+function buildIndex(X, Y, skip = null, cell = 50) {
   const map = new Map();
   const key = (cx, cy) => cx * 100003 + cy;
   for (let i = 0; i < X.length - 1; i++) {
+    if (skip && skip[i + 1]) continue;
     const x0 = Math.min(X[i], X[i + 1]) - MATCH_R, x1 = Math.max(X[i], X[i + 1]) + MATCH_R;
     const y0 = Math.min(Y[i], Y[i + 1]) - MATCH_R, y1 = Math.max(Y[i], Y[i + 1]) + MATCH_R;
     for (let cx = Math.floor(x0 / cell); cx <= Math.floor(x1 / cell); cx++)
@@ -60,7 +62,7 @@ export function compareRides(r1, r2, opts = {}) {
   const proj = makeProjection(lat0, r1.lon[0]);
   const P = (r) => { const X = new Float64Array(r.n), Y = new Float64Array(r.n); for (let i = 0; i < r.n; i++) { const [a, b] = proj(r.lat[i], r.lon[i]); X[i] = a; Y[i] = b; } return { X, Y }; };
   const p1 = P(r1), p2 = P(r2);
-  const idx1 = buildIndex(p1.X, p1.Y), idx2 = buildIndex(p2.X, p2.Y);
+  const idx1 = buildIndex(p1.X, p1.Y, r1.paused), idx2 = buildIndex(p2.X, p2.Y, r2.paused);
   const f1 = coverage(p1.X, p1.Y, idx2, p2.X, p2.Y); // share of r1 lying on r2
   const f2 = coverage(p2.X, p2.Y, idx1, p1.X, p1.Y);
   // reference = the ride that lies most completely on the other one
@@ -142,6 +144,7 @@ export function compareRides(r1, r2, opts = {}) {
     }
   }
   cover = mergeWindows(cover, 80);
+  if (!cover.length) return { error: 'direction', f1, f2 }; // same roads, but never ridden the same way
   // standing starts / finishes
   const s0 = cover[0][0], s1 = cover[cover.length - 1][1];
   let lo = s0, hi = s1;
@@ -233,7 +236,7 @@ export function compareRides(r1, r2, opts = {}) {
     const i0 = gi(a), i1 = gi(b);
     const force = [];
     if (R.turnD != null && R.turnD > a + 300 && R.turnD < b - 300) force.push(gi(R.turnD));
-    for (const sg of segmentProfile(R.grid.d, R.grid.eleS, { from: i0, to: i1, force })) segs.push(sg);
+    for (const sg of segmentProfile(R.grid.d, R.grid.eleC, { from: i0, to: i1, force, zAbs: R.grid.eleS })) segs.push(sg);
   });
   const at = (T, s) => interp(s, grid, T);
   for (const sg of segs) {

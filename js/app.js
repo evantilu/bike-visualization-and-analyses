@@ -60,7 +60,7 @@ function run() {
     else if (sel.length === 2) {
       const cmp = compareRides(sel[0], sel[1]);
       if (cmp.error) {
-        host.append(el('div', { class: 'card warnbox' }, cmp.error === 'overlap' ? `這兩趟重疊的路段太少（${Math.round(Math.max(cmp.f1, cmp.f2) * 100)}%），沒辦法比較。可以改成分別看單趟分析。` : '找不到可以比較的路段。'));
+        host.append(el('div', { class: 'card warnbox' }, cmp.error === 'overlap' ? `這兩趟重疊的路段太少（${Math.round(Math.max(cmp.f1, cmp.f2) * 100)}%），沒辦法比較。可以改成分別看單趟分析。` : cmp.error === 'direction' ? '這兩趟走的是同一條路，但方向相反（例如去程和回程），沒有同方向騎過的路段可以比較。可以改成分別看單趟分析。' : '找不到可以比較的路段。'));
       } else {
         let swap = false; const render = () => buildCompare(host, cmp, { swap, onSwap: () => { swap = !swap; render(); } }); render();
       }

@@ -17,11 +17,23 @@ const fx = (f) => new URL('../private/fixtures/' + f, import.meta.url);
   console.log(`${ok ? 'PASS' : 'FAIL'} synthetic 7 % climb: ${c ? Math.round(c.med) : '—'} W (want 185 ±3, tier good) FTP ${P.ftp ? Math.round(P.ftp.lo) + '–' + Math.round(P.ftp.hi) : '—'}`);
   if (!ok) process.exitCode = 1;
 }
+// same climb with 30 s standing still (device recording, no auto-pause) in the middle: like Strava,
+// that time is moving time, but no best-20-min window may span the rest
+{
+  const pts = [], t0 = Date.UTC(2026, 8, 28), v = 11 / 3.6; let d = 0, z = 100;
+  for (let i = 0; i <= 1530; i++) { pts.push({ lat: 24.8 + d / 111320, lon: 121, ele: z, t: t0 + i * 1000 }); if (i < 700 || i >= 730) { d += v; z += v * 0.07; } }
+  const R = prepareRide({ name: 'synthetic stop', points: pts }, {});
+  const P = analyzePower(R, { rider: { massKit: 70 }, bike: { id: 'x', mass: 8, tire: 'race', tube: 'light', psi: 90, chain: 'normal' }, ride: { climbPos: 'hoods', flatPos: 'hoods', wind: 'none', tempC: 20, drafting: 'no' } });
+  const ok = Math.abs(R.moving - 1530) <= 1 && !P.best[1200] && !P.ftp;
+  console.log(`${ok ? 'PASS' : 'FAIL'} synthetic 30 s standing still: moving ${R.moving.toFixed(0)} s (want 1530), best 20 min ${P.best[1200] ? 'found' : 'none'} (want none), FTP ${P.ftp ? 'given' : 'none'} (want none)`);
+  if (!ok) process.exitCode = 1;
+}
 if (!existsSync(fx('2025-09-21_before.gpx'))) { console.log('SKIP: private fixtures missing'); process.exit(process.exitCode || 0); }
 const B = prepareRide(parseGPX(readFileSync(fx('2025-09-21_before.gpx'), 'utf8')), { id: 'before' });
 const A = prepareRide(parseGPX(readFileSync(fx('2026-09-21_after.gpx'), 'utf8')), { id: 'after' });
 let fails = 0;
 const check = (label, got, want, tol) => { const ok = Math.abs(got - want) <= tol; if (!ok) fails++; console.log(`${ok ? 'PASS' : 'FAIL'} ${label}: ${got.toFixed(1)} (want ${want} ±${tol})`); };
+// moving time = Strava's: pauses never count, standing still while recording does (34:36, 23:55)
 check('before moving time', B.moving, 2076, 1); check('after moving time', A.moving, 1435, 1);
 check('after max speed', A.vmax, 45.9, 0.3); check('before max speed', B.vmax, 40.4, 0.3);
 const stopA = A.stops.find(s => Math.abs(s.d - 4850) < 30); check('after stop duration', stopA ? stopA.dur : -1, 28, 1);
@@ -36,7 +48,7 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
   const gapAdj = c.Tadj.R[c.Tadj.R.length - 1] - c.Tadj.O[c.Tadj.O.length - 1];
   const gapAdjJ = (c.Tadj.R[c.Tadj.R.length - 1] - c.Tadj.R[j]) - (c.Tadj.O[c.Tadj.O.length - 1] - c.Tadj.O[j]);
   const tol = secs ? 1.0 : 4.0;
-  check(label + ' gap from start', gap, -32.9, tol); check(label + ' gap from junction', gapJ, -18.6, tol);
+    check(label + ' gap from start', gap, -32.9, tol); check(label + ' gap from junction', gapJ, -18.6, tol);
   check(label + ' adjusted from start', gapAdj, -53.4, tol + 1); check(label + ' adjusted from junction', gapAdjJ, -39.1, tol + 1);
   if (secs) {
     const segT = (a, b) => (interp(b, c.grid, c.T.R) - interp(a, c.grid, c.T.R)) - (interp(b, c.grid, c.T.O) - interp(a, c.grid, c.T.O));
@@ -53,9 +65,28 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
     const R = prepareRide(parseGPX(readFileSync(p, 'utf8')), { id: '2026-09-23' });
     check('glitch ride: max speed is plausible', R.vmax, 43.8, 0.5);
     check('glitch ride: jump is flagged', R.glitches.some(([a, b]) => a < 19155 && b > 19155) ? 1 : 0, 1, 0);
-    check('glitch ride: distance keeps the jump (as Strava does)', R.total / 1000, 23.27, 0.05);
-    check('glitch ride: 276 s recording gap counts as moving time', R.moving, 3066, 2);
+    // Strava: 45:24, 22.56 km. The 276 s and 68 s gaps (390 m, 69 m) are pauses, time and distance;
+    // the remaining 0.2 km is the 171 m frozen-fix jump, which we still count
+    check('glitch ride: moving time = Strava 45:24', R.moving, 2724, 3);
+    check('glitch ride: distance (Strava 22.56 + the 171 m jump)', R.total / 1000, 22.76, 0.05);
   } else console.log('SKIP glitch-ride checks (fixture missing)');
+}
+// paused for a warm-up right after pressing start, resumed ~1 km further on (no points for 6 min):
+// Strava counts neither that time nor that distance — 33:12, 13.99 km, 25.3 km/h
+{
+  const p = fx('2026-10-03_guanxi_out.gpx'), q = fx('2026-10-03_guanxi_back.gpx'), x = fx('2026-09-28_xinpu.gpx');
+  if (existsSync(p) && existsSync(q) && existsSync(x)) {
+    const G = prepareRide(parseGPX(readFileSync(p, 'utf8')), { id: 'out' }), H = prepareRide(parseGPX(readFileSync(q, 'utf8')), { id: 'back' });
+    check('paused warm-up: moving time = Strava 33:12', G.moving, 1992, 3);
+    check('paused warm-up: distance ≈ Strava 13.99 km', G.total / 1000, 13.99, 0.1);
+    check('paused warm-up: no fake ramp at the jump (max grade %)', Math.max(...G.grid.grade.subarray(0, 30)), 3, 3);
+    check('way back: moving time = Strava 30:28', H.moving, 1828, 3);
+    let err = ''; try { err = compareRides(G, H).error || 'none'; } catch (e) { err = 'throws'; }
+    check('out vs back (opposite directions) gives a message, not a crash', err === 'direction' ? 1 : 0, 1, 0);
+    const X = prepareRide(parseGPX(readFileSync(x, 'utf8')), { id: '0928' });
+    check('9/28: moving time = Strava 23:39 (rest, then paused while riding 1 km)', X.moving, 1419, 3);
+    check('9/28: distance ≈ Strava 11.21 km', X.total / 1000, 11.21, 0.1);
+  } else console.log('SKIP pause checks (fixtures missing)');
 }
 
 // order independence and self-comparison
@@ -81,7 +112,9 @@ for (const [label, secs] of [['manual sections', [[200, 880], [930, 5640], [5940
     const [c1, c2] = P.climbs;
     check('power: outbound climb (3 min) W', c1.med, 222, 4); check('power: outbound climb tier good', c1.tier === 'good' ? 1 : 0, 1, 0);
     check('power: outbound climb ±%', c1.half * 100, 6, 1.5);
-    check('power: return climb (6 min) W', c2.med, 191, 4); check('power: return climb tier good', c2.tier === 'good' ? 1 : 0, 1, 0);
+    // since pauses no longer add distance, the 1 km ridden while paused at 6.17 km is gone from the
+    // profile; the return climb is now its steep last 0.58 km (5.5 %, 2.6 min) — it was 1.85 km at 191 W
+    check('power: return climb (steep last 0.58 km) W', c2.med, 180, 4); check('power: return climb tier good', c2.tier === 'good' ? 1 : 0, 1, 0);
     check('power: descent sprint window is not estimated', P.best[300]?.tier === 'none' ? 1 : 0, 1, 0);
     check('power: no 20-min window across the break / recording gap', P.best[1200] ? 0 : 1, 1, 0);
     check('power: no FTP without a long reliable climb', P.ftp ? 0 : 1, 1, 0);

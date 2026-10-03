@@ -136,9 +136,12 @@ export function kinematics(ride) {
   // grade along the road (for choosing the hand position), from the 10 m grid
   const G = ride.grid, grade = new Float64Array(n);
   for (let i = 0; i < n; i++) grade[i] = G.grade[Math.min(G.grade.length - 1, Math.round(ride.d[i] / 10))];
+  // stopped: paused, or standing still while recording
+  const stop = new Uint8Array(n);
+  for (let i = 1; i < n; i++) stop[i] = ride.paused[i] || ride.still?.[i] ? 1 : 0;
   // usable samples: moving, no recording gap, not stopped
   const ok = new Uint8Array(n);
-  for (let i = 1; i < n; i++) ok[i] = !ride.paused[i] && ride.dt[i] <= 3 && ride.v[i] >= 2 ? 1 : 0;
+  for (let i = 1; i < n; i++) ok[i] = !stop[i] && ride.dt[i] <= 3 && ride.v[i] >= 2 ? 1 : 0;
   // elevation source: a basemap / barometric profile is smooth sample to sample, raw GPS altitude
   // jumps by metres (RMS of the second difference ≈ 0.1 m vs ≈ 2 m)
   let s2 = 0, c2 = 0;
@@ -147,7 +150,7 @@ export function kinematics(ride) {
   // recording gaps while moving (power unknown) — best-effort windows must not span them
   const gap = new Uint8Array(n);
   for (let i = 1; i < n; i++) gap[i] = !ride.paused[i] && ride.dt[i] > 5 ? 1 : 0;
-  return { n, t, v, acc, vz, hx, hy, grade, ok, gap, dt: ride.dt, d: ride.d, ele: ride.ele, eleNoise, dhSd: eleNoise < 0.4 ? 1.5 : 4 };
+  return { n, t, v, acc, vz, hx, hy, grade, ok, stop, gap, dt: ride.dt, d: ride.d, ele: ride.ele, eleNoise, dhSd: eleNoise < 0.4 ? 1.5 : 4 };
 }
 
 // power of every sample for one parameter draw (W at the cranks; negative = coasting/braking)
@@ -290,21 +293,22 @@ function meanElapsed(K, P, i0, i1) { let T = 0, E = 0; for (let i = i0 + 1; i <=
 function climbShare(K, i0, i1) { let T = 0, C = 0; for (let i = i0 + 1; i <= i1; i++) if (K.ok[i]) { T += K.dt[i]; if (K.grade[i] >= CLIMB_GRADE) C += K.dt[i]; } return T ? C / T : 0; }
 // 0 = headings cancel (loop / out-and-back), 1 = all one direction (wind cannot cancel)
 function headingImbalance(K, i0, i1) { let T = 0, X = 0, Y = 0; for (let i = i0 + 1; i <= i1; i++) if (K.ok[i]) { T += K.dt[i]; X += K.hx[i] * K.dt[i]; Y += K.hy[i] * K.dt[i]; } return T ? Math.hypot(X, Y) / T : 1; }
-// best average (clipped) power over W seconds of elapsed time. Short stops count as zero; windows
-// that span a recording gap or are more than 10 % stopped are skipped (they are not one effort)
+// best average (clipped) power over W seconds of riding. A window must not contain any stop (a rest
+// in the middle is not one effort, and stopped time is never counted) nor a recording gap; coasting
+// counts as zero, other unusable samples (short recording hiccups) may be up to 10 % of it
 function bestWindow(K, P, W) {
-  const n = K.n, cumT = new Float64Array(n), cumE = new Float64Array(n), cumG = new Float64Array(n), cumS = new Float64Array(n);
+  const n = K.n, cumT = new Float64Array(n), cumE = new Float64Array(n), cumG = new Float64Array(n), cumS = new Float64Array(n), cumX = new Float64Array(n);
   for (let i = 1; i < n; i++) {
     const ok = K.ok[i] && Number.isFinite(P[i]);
     cumT[i] = cumT[i - 1] + K.dt[i]; cumE[i] = cumE[i - 1] + (ok ? Math.max(0, P[i]) * K.dt[i] : 0);
-    cumG[i] = cumG[i - 1] + K.gap[i]; cumS[i] = cumS[i - 1] + (K.ok[i] ? 0 : K.dt[i]);
+    cumG[i] = cumG[i - 1] + K.gap[i]; cumS[i] = cumS[i - 1] + (K.stop[i] ? 1 : 0); cumX[i] = cumX[i - 1] + (K.ok[i] || K.stop[i] ? 0 : K.dt[i]);
   }
   if (cumT[n - 1] < W) return null;
   let best = null, j = 0;
   for (let i = 1; i < n; i++) {
     while (j < i && cumT[i] - cumT[j + 1] >= W) j++;
     const span = cumT[i] - cumT[j];
-    if (span < W * 0.98 || span > W * 1.1 || cumG[i] - cumG[j] > 0 || cumS[i] - cumS[j] > 0.1 * W) continue; // no gaps, ≤ 10 % stopped
+    if (span < W * 0.98 || span > W * 1.1 || cumG[i] - cumG[j] > 0 || cumS[i] - cumS[j] > 0 || cumX[i] - cumX[j] > 0.1 * W) continue; // no gaps, no stops
     const e = (cumE[i] - cumE[j]) / span;
     if (!best || e > best.p) best = { p: e, i0: j, i1: i };
   }

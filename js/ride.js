@@ -4,6 +4,9 @@ import { median, cumsum, lastLE, movingAvg, clamp } from './util.js';
 
 export const R_EARTH = 6371000;
 export const GRID = 10; // metres between grid samples
+// No points for this long = the recording was paused (auto or by hand). GPX keeps no pause marks;
+// in the rides checked, GPS dropouts while riding lasted ≤ 8 s and pauses with movement ≥ 68 s.
+export const PAUSE_GAP = 15;
 
 export function makeProjection(lat0, lon0) {
   const k = Math.cos(lat0 * Math.PI / 180), r = Math.PI / 180 * R_EARTH;
@@ -46,20 +49,23 @@ export function prepareRide(gpx, meta = {}) {
   for (let i = 0; i < n; i++) { const [a, b] = proj(lat[i], lon[i]); x[i] = a; y[i] = b; }
   const step = new Float64Array(n), dt = new Float64Array(n);
   for (let i = 1; i < n; i++) { step[i] = Math.hypot(x[i] - x[i - 1], y[i] - y[i - 1]); dt[i] = t[i] - t[i - 1]; }
-  const d = cumsum(step);
   const medDt = median(dt.subarray(1)) || 1;
-  // pauses: long gap with (almost) no movement = device auto-pause
+  // pauses (auto or by hand): a gap of PAUSE_GAP s or more, or a shorter gap with (almost) no
+  // movement. As on Strava, neither the time nor the distance across a pause counts — e.g. paused
+  // for a warm-up and resumed 1 km further on. Shorter gaps with movement are GPS dropouts while
+  // riding and count normally.
   const paused = new Uint8Array(n);
   const mstep = new Float64Array(n);
   for (let i = 1; i < n; i++) {
-    const isPause = dt[i] > Math.max(3, 2.5 * medDt) && step[i] / dt[i] < 1.0;
+    const isPause = dt[i] > Math.max(3, 2.5 * medDt) && (dt[i] >= PAUSE_GAP || step[i] / dt[i] < 1.0);
     paused[i] = isPause ? 1 : 0;
     mstep[i] = isPause ? medDt : dt[i];
   }
+  const d = cumsum(Float64Array.from(step, (s, i) => (paused[i] ? 0 : s)));
   const mt = cumsum(mstep); // moving clock (s)
   // Implausible single steps: a frozen fix that jumps, or plain GPS noise. The displacement is
-  // kept in the ride distance (Strava counts it too), but it is left out of the speed series,
-  // otherwise one bad fix turns into a 100 km/h "max speed".
+  // kept in the ride distance (Strava seems not to count it: 0.2 km more than Strava on 2026-09-23),
+  // but it is left out of the speed series, otherwise one bad fix turns into a 100 km/h "max speed".
   const rawV = new Float64Array(n);
   for (let i = 1; i < n; i++) rawV[i] = paused[i] ? 0 : step[i] / Math.max(mstep[i], 1e-6) * 3.6;
   const bad = new Uint8Array(n);
@@ -75,7 +81,7 @@ export function prepareRide(gpx, meta = {}) {
   const v = windowSpeed(dMove, mt, 3);   // ~7 s centred (km/h)
   const v1 = windowSpeed(dMove, mt, 1);  // ~3 s centred, for stop detection
   const glitches = detectGlitches(d, rawV, bad);
-  const stops = detectStops(d, t, v1, paused, dt);
+  const { stops, still } = detectStops(d, t, v1, paused, dt);
   // distance grid
   const total = d[n - 1];
   const gd = [];
@@ -98,13 +104,26 @@ export function prepareRide(gpx, meta = {}) {
     grid.lat[j] = lerp(lat); grid.lon[j] = lerp(lon);
     for (const key in extras) grid[key][j] = lerp(extras[key]);
   }
-  const eleS = movingAvg(grid.ele, 9);
-  grid.eleS = eleS;
+  // A pause that moved the rider puts the track (and its elevation) somewhere else at the same
+  // distance: smooth and take grades within each piece, so the jump is not read as a steep ramp.
+  const brk = [];
+  for (let i = 1; i < n; i++) if (paused[i] && step[i] > 20) { const j = Math.floor(d[i] / GRID) + 1; if (j > 0 && j < G && brk[brk.length - 1] !== j) brk.push(j); }
+  const pieces = []; { let a = 0; for (const j of brk) { pieces.push([a, j - 1]); a = j; } pieces.push([a, G - 1]); }
+  const eleS = new Float64Array(G), eleC = new Float64Array(G);
   grid.grade = new Float64Array(G);
-  for (let j = 0; j < G; j++) {
-    const a = Math.max(0, j - 1), b = Math.min(G - 1, j + 1);
-    grid.grade[j] = b > a ? (eleS[b] - eleS[a]) / ((b - a) * GRID) * 100 : 0;
+  let off = 0;
+  for (const [a, b] of pieces) {
+    const sm = movingAvg(grid.ele.subarray(a, b + 1), 9);
+    if (a > 0) off += sm[0] - eleS[a - 1];   // elevation gained or lost while paused
+    for (let j = a; j <= b; j++) { eleS[j] = sm[j - a]; eleC[j] = eleS[j] - off; }
+    for (let j = a; j <= b; j++) {
+      const p = Math.max(a, j - 1), q = Math.min(b, j + 1);
+      grid.grade[j] = q > p ? (eleS[q] - eleS[p]) / ((q - p) * GRID) * 100 : 0;
+    }
   }
+  grid.eleS = eleS;   // smoothed elevation (true height, steps at a pause jump)
+  grid.eleC = eleC;   // same, with the pause jumps taken out: continuous, for grades and segments
+  grid.breaks = brk;
   // max speed outside glitch windows
   let vmax = 0, vmaxD = 0;
   for (let i = 0; i < n; i++) {
@@ -113,7 +132,7 @@ export function prepareRide(gpx, meta = {}) {
   }
   const ride = {
     id: meta.id ?? '', fileName: meta.fileName ?? '', name: gpx.name || meta.fileName || '',
-    start: t0, n, lat, lon, ele, t, x, y, d, dt, step, mt, paused, v, rawV, lat0, proj,
+    start: t0, n, lat, lon, ele, t, x, y, d, dt, step, mt, paused, still, v, rawV, lat0, proj,
     extras, grid, glitches, stops,
     total, elapsed: t[n - 1], moving: mt[n - 1],
     avg: total / Math.max(mt[n - 1], 1) * 3.6, vmax, vmaxD,
@@ -127,7 +146,7 @@ export function prepareRide(gpx, meta = {}) {
     ride.turnD = d[far];
     force.push(Math.round(d[far] / GRID));
   }
-  ride.segments = segmentProfile(grid.d, eleS, { from: 0, to: G - 1, force });
+  ride.segments = segmentProfile(grid.d, eleC, { from: 0, to: G - 1, force, zAbs: eleS });
   return ride;
 }
 
@@ -178,17 +197,21 @@ export function mergeWindows(wins, gap = 0) {
   return out;
 }
 
-// Stops: consecutive samples that are stationary (<2 km/h over ~3 s) or auto-paused.
+// Stops: consecutive samples that are stationary (<2 km/h over ~3 s) or paused. Returns the stops
+// (≥ 5 s, merged when closer than 25 m) and a per-sample mask of the time spent standing still while
+// the device kept recording (this time counts as moving time, as on Strava; paused samples are not
+// in the mask).
 function detectStops(d, t, v1, paused, dt) {
-  const n = d.length, stops = [];
+  const n = d.length, stops = [], still = new Uint8Array(n);
   let i = 0;
   while (i < n) {
-    const still = (k) => paused[k] || v1[k] < 2;
-    if (!still(i)) { i++; continue; }
+    const isStill = (k) => paused[k] || v1[k] < 2;
+    if (!isStill(i)) { i++; continue; }
     let j = i;
-    while (j + 1 < n && (still(j + 1) || d[j + 1] - d[i] < 3)) j++;
-    let pausedS = 0, stillS = 0;
-    for (let k = i + 1; k <= j; k++) { if (paused[k]) pausedS += dt[k]; else stillS += dt[k]; }
+    while (j + 1 < n && (isStill(j + 1) || d[j + 1] - d[i] < 3)) j++;
+    for (let k = Math.max(1, i); k <= j; k++) if (!paused[k]) still[k] = 1;
+    let pausedS = 0;
+    for (let k = i + 1; k <= j; k++) if (paused[k]) pausedS += dt[k];
     if (paused[i] && i > 0) pausedS += dt[i];
     const dur = t[j] - t[Math.max(0, i - 1)];
     if (dur >= 5) stops.push({ d: d[i], i0: i, i1: j, t0: t[i], dur, paused: pausedS, still: dur - pausedS });
@@ -201,7 +224,7 @@ function detectStops(d, t, v1, paused, dt) {
     if (p && s.d - p.d < 25) { p.i1 = s.i1; p.dur += s.dur; p.paused += s.paused; p.still += s.still; }
     else out.push({ ...s });
   }
-  return out;
+  return { stops: out, still };
 }
 
 // Elevation gain with a small hysteresis to ignore noise (m)
@@ -227,7 +250,8 @@ export const GRADE_CLASSES = [
 export function gradeClass(g) { for (const c of GRADE_CLASSES) if (g < c.max) return c; return GRADE_CLASSES[GRADE_CLASSES.length - 1]; }
 
 // Douglas–Peucker (vertical tolerance) + merge of short pieces. Returns [{i0,i1,d0,d1,z0,z1,grade,cls}]
-export function segmentProfile(gd, ele, { from = 0, to = gd.length - 1, minLen = 500, force = [] } = {}) {
+// ele: a continuous profile (grid.eleC); zAbs: true heights for the z0 / z1 shown (default ele)
+export function segmentProfile(gd, ele, { from = 0, to = gd.length - 1, minLen = 500, force = [], zAbs = ele } = {}) {
   if (to - from < 2) return [];
   let lo = Infinity, hi = -Infinity;
   for (let i = from; i <= to; i++) { lo = Math.min(lo, ele[i]); hi = Math.max(hi, ele[i]); }
@@ -273,7 +297,9 @@ export function segmentProfile(gd, ele, { from = 0, to = gd.length - 1, minLen =
   const segs = [];
   for (let k = 0; k < br.length - 1; k++) {
     const a = br[k], b = br[k + 1], g = gradeOf(a, b);
-    segs.push({ i0: a, i1: b, d0: gd[a], d1: gd[b], z0: ele[a], z1: ele[b], grade: g, cls: gradeClass(g) });
+    // heights shown: true end height, start = end minus the climb inside the segment (equal to the true
+    // start height unless a pause jump lies inside)
+    segs.push({ i0: a, i1: b, d0: gd[a], d1: gd[b], z0: zAbs[b] - (ele[b] - ele[a]), z1: zAbs[b], grade: g, cls: gradeClass(g) });
   }
   return segs;
 }

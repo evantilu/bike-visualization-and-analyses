@@ -53,7 +53,7 @@ export function buildCompare(host, cmp, { swap = false, onSwap } = {}) {
     el('div', { class: 'box' }, el('ul', {},
       el('li', { html: `<b>兩趟可以比較的路段共 ${(cmp.compLen / 1000).toFixed(2)} km：藍比紅${faster} ${Math.abs(dAll).toFixed(0)} 秒</b>（移動時間 ${fmtTime(tR)} → ${fmtTime(tB)}，均速 ${(cmp.compLen / tR * 3.6).toFixed(1)} → ${(cmp.compLen / tB * 3.6).toFixed(1)} km/h）。` }),
       hasAdj ? el('li', { html: `扣除停車的影響後（${costs.map(c => `${who(c.who)} ${(c.s / 1000).toFixed(2)} km 約 ${c.cost.toFixed(0)} 秒`).join('、')}），藍比紅${dAdj < 0 ? '快' : '慢'} ${Math.abs(dAdj).toFixed(0)} 秒。` }) : null,
-      el('li', {}, `下面所有時間都是移動時間（自動暫停不計，和 Strava 一致），用每 10 m 一個計時點算出來。`))),
+      el('li', {}, `下面所有時間都是移動時間（暫停的時間和距離都不算，和 Strava 一致），用每 10 m 一個計時點算出來。`))),
     el('div', { class: 'tiles' },
       tile(`藍 ${nameB}`, (blue.total / 1000).toFixed(2), 'km', `整趟 ${fmtTime(blue.moving)}，均速 ${blue.avg.toFixed(1)}`, BLUE),
       tile(`紅 ${nameR}`, (red.total / 1000).toFixed(2), 'km', `整趟 ${fmtTime(red.moving)}，均速 ${red.avg.toFixed(1)}`, RED),
@@ -156,7 +156,7 @@ export function buildCompare(host, cmp, { swap = false, onSwap } = {}) {
       if (done[0] && done[1]) { const d = TL[0][TL[0].length - 1] - TL[1][TL[1].length - 1]; return `終點：藍比紅${d < 0 ? '快' : '慢'} ${Math.abs(d).toFixed(0)} 秒${adj ? '（已扣除停車影響）' : ''}。把時間軸往回拉，可以看是在哪裡拉開的。`; }
       if (done[0]) return `藍已經到終點，紅還差 ${Math.abs(gg).toFixed(0)} 秒。`;
       if (done[1]) return `紅已經到終點，藍還差 ${Math.abs(gg).toFixed(0)} 秒。`;
-      for (const st of cmp.stops) { const k = st.who === blueRole ? 0 : 1; if (Math.abs(pos[k] - st.s) < 60) return adj && st.cost ? `已扣除停車影響：${k ? '紅' : '藍'}在 ${(st.w0 / 1000).toFixed(2)}–${(st.w1 / 1000).toFixed(2)} km 用停車前的速度推算。` : `${k ? '紅' : '藍'}在 ${(st.s / 1000).toFixed(2)} km 停車：共 ${fmtTime(st.dur)}（其中自動暫停 ${fmtTime(st.paused)} 不計入移動時間）。`; }
+      for (const st of cmp.stops) { const k = st.who === blueRole ? 0 : 1; if (Math.abs(pos[k] - st.s) < 60) return adj && st.cost ? `已扣除停車影響：${k ? '紅' : '藍'}在 ${(st.w0 / 1000).toFixed(2)}–${(st.w1 / 1000).toFixed(2)} km 用停車前的速度推算。` : `${k ? '紅' : '藍'}在 ${(st.s / 1000).toFixed(2)} km 停車：共 ${fmtTime(st.dur)}（其中暫停 ${fmtTime(st.paused)} 不計入移動時間）。`; }
       for (const s of pos) { const r = zoneReason(s); if (r) return r; }
       for (const s of pos) if (inWindows(s, cmp.glitches)) return 'GPS 飄移路段：這裡的逐點速度不準，但段落總時間仍然可信。';
       const sg = segs.find(s => pos[0] >= s.d0 && pos[0] <= s.d1);
