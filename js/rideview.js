@@ -1,11 +1,11 @@
 // Single-ride map, segment selector and synchronized raw-sample charts.
-import { mountMapInset } from './map-inset.js?v=2.0.4';
-import { PanelChart } from './charts.js?v=2.0.4';
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.4';
-import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.4';
-import { interp, lastLE } from './util.js?v=2.0.4';
-import { inWindows } from './ride.js?v=2.0.4';
-import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.4';
+import { mountMapInset } from './map-inset.js?v=2.0.5';
+import { PanelChart } from './charts.js?v=2.0.5';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.5';
+import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.5';
+import { interp, lastLE } from './util.js?v=2.0.5';
+import { inWindows } from './ride.js?v=2.0.5';
+import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.5';
 
 const LAP_COLORS = ['#086b91', '#ad451c', '#7750a4', '#127153', '#a22f68', '#786017', '#3c59ae', '#495f63'];
 const rounded = (v, unit, digits = 0) => Number.isFinite(v) ? `${v.toFixed(digits)} ${unit}` : '—';
@@ -70,14 +70,16 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   const mapEl = el('div', { class: 'map' });
   const detailToggle = el('input', { type: 'checkbox' });
   detailToggle.checked = window.matchMedia('(min-width: 900px)').matches;
-  const detailMapEl = el('div', { class: 'map ride-detail-map', role: 'img', 'aria-label': '局部放大地圖' });
+  const detailMapEl = el('div', { class: 'map ride-detail-map', role: 'img', tabindex: '0', 'aria-label': '局部放大地圖，滾輪或加減鍵縮放' });
   const detailStatus = el('span', { class: 'ride-detail-status' });
   const detailHandle = el('button', { type: 'button', class: 'ride-detail-handle',
     title: '拖曳或使用方向鍵移動局部地圖', 'aria-label': '移動局部地圖，可用方向鍵' }, '局部放大');
   const detailAuto = el('button', { type: 'button', class: 'ride-detail-auto', title: '恢復自動位置',
     'aria-label': '恢復局部地圖自動位置', disabled: true }, '自動');
+  const detailResize = el('button', { type: 'button', class: 'ride-detail-resize',
+    title: '拖曳或使用方向鍵調整大小', 'aria-label': '調整局部地圖大小，可用方向鍵' });
   const detailPane = el('div', { class: 'ride-detail-pane' },
-    el('div', { class: 'ride-detail-label' }, detailHandle, detailStatus, detailAuto), detailMapEl);
+    el('div', { class: 'ride-detail-label' }, detailHandle, detailStatus, detailAuto), detailMapEl, detailResize);
   detailPane.hidden = !detailToggle.checked;
   const mapGroup = el('div', { class: 'ride-map-group' }, mapEl, detailPane);
   const legend = el('div', { class: 'legend' });
@@ -145,8 +147,9 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   };
   let tracks = [], visible = [];
   let detailMap, detailOverlay, detailFrame = null, detailFocus = null, previousDetailPoint = null;
+  let detailZoom = 17, wheelDelta = 0, lastWheel = 0;
   const inset = mountMapInset({
-    map, overview: mapEl, pane: detailPane, handle: detailHandle, autoButton: detailAuto,
+    map, overview: mapEl, pane: detailPane, handle: detailHandle, resizeHandle: detailResize, autoButton: detailAuto,
     paths: () => tracks.map(track => Array.from(track.lat, (lat, i) => map.latLngToContainerPoint([lat, track.lon[i]]))),
   });
   function updateTracks() {
@@ -199,8 +202,10 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   function drawDetail(ctx) {
     if (!detailFocus) return;
     const { point, index } = detailFocus;
-    const from = Math.max(0, lastLE(ride.d, ride.d[index] - 340));
-    const to = lastLE(ride.d, ride.d[index] + 340) + 1;
+    const screenFactor = Math.max(1, detailMapEl.clientWidth / 226, detailMapEl.clientHeight / 176);
+    const radius = 340 * screenFactor * 2 ** (17 - detailMap.getZoom());
+    const from = Math.max(0, lastLE(ride.d, ride.d[index] - radius));
+    const to = lastLE(ride.d, ride.d[index] + radius) + 1;
     for (const track of tracks) {
       const a = Math.max(track.a, from), b = Math.min(track.a + track.lat.length, to);
       if (b - a < 2) continue;
@@ -229,10 +234,10 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
       detailFocus = { point, index: cursor == null ? first : lastLE(trackTime, cursor) };
       if (!detailMap) {
         detailMap = makeMap(detailMapEl, { interactive: false });
-        detailMap.setView(point, 17, { animate: false });
+        detailMap.setView(point, detailZoom, { animate: false });
         detailOverlay = canvasOverlay(detailMap, drawDetail);
-      } else if (point.some((coordinate, i) => coordinate !== previousDetailPoint[i])) {
-        detailMap.setView(point, 17, { animate: false });
+      } else if (detailMap.getZoom() !== detailZoom || point.some((coordinate, i) => coordinate !== previousDetailPoint[i])) {
+        detailMap.setView(point, detailZoom, { animate: false });
       }
       previousDetailPoint = point;
       detailOverlay.redraw();
@@ -387,6 +392,30 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
       cancelAnimationFrame(detailFrame);
       detailFrame = null;
     }
+  });
+  function changeDetailZoom(delta) {
+    const zoom = Math.max(13, Math.min(19, detailZoom + delta));
+    if (zoom === detailZoom) return;
+    detailZoom = zoom;
+    updateDetail();
+  }
+  detailPane.addEventListener('wheel', e => {
+    if (e.ctrlKey || e.metaKey || !e.deltaY) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 160 : 1);
+    if (e.timeStamp - lastWheel > 180 || wheelDelta * pixels < 0) wheelDelta = 0;
+    lastWheel = e.timeStamp;
+    wheelDelta += pixels;
+    const steps = Math.trunc(wheelDelta / 40);
+    if (!steps) return;
+    wheelDelta %= 40;
+    changeDetailZoom(-Math.sign(steps) * Math.min(Math.abs(steps), 3) / 2);
+  }, { passive: false });
+  detailMapEl.addEventListener('keydown', e => {
+    if (!['+', '=', '-'].includes(e.key) || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    changeDetailZoom(e.key === '-' ? -0.5 : 0.5);
   });
   temperature.addEventListener('change', () => drawChart(cursor == null ? null : +range.value));
 

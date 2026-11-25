@@ -36,8 +36,8 @@ export function chooseInset(bounds, width, height, paths, preferred) {
   return null;
 }
 
-export function mountMapInset({ map, overview, pane, handle, autoButton, paths }) {
-  let manual = null, position = null, choice = null, drag = null, frame = null;
+export function mountMapInset({ map, overview, pane, handle, resizeHandle, autoButton, paths }) {
+  let manual = null, position = null, choice = null, drag = null, frame = null, size = null;
 
   function limits() {
     const left = 10, top = 10;
@@ -55,17 +55,40 @@ export function mountMapInset({ map, overview, pane, handle, autoButton, paths }
     }
   }
 
-  function setManual(point, bounds) {
-    manual = point;
-    autoButton.disabled = false;
+  function keepInside(point, bounds) {
     move({
       x: Math.max(bounds.left, Math.min(bounds.right, point.x)),
       y: Math.max(bounds.top, Math.min(bounds.bottom, point.y)),
     });
   }
 
+  function setManual(point, bounds) {
+    manual = point;
+    autoButton.disabled = false;
+    keepInside(point, bounds);
+  }
+
+  function applySize() {
+    if (!size) return;
+    const maxWidth = overview.clientWidth - 20;
+    const maxHeight = overview.clientHeight - 32;
+    const width = Math.max(134, Math.min(maxWidth, size.width));
+    const height = Math.max(106, Math.min(maxHeight, size.height));
+    pane.style.setProperty('--ride-detail-width', width + 'px');
+    pane.style.setProperty('--ride-detail-height', height + 'px');
+  }
+
+  function resizeTo(width, height, origin) {
+    size = { width, height };
+    applySize();
+    const bounds = limits();
+    if (origin && bounds) keepInside(origin, bounds);
+    else move(null);
+  }
+
   function place() {
     if (pane.hidden || drag) return;
+    applySize();
     const bounds = limits();
     if (!bounds) { move(null); return; }
     if (manual) { setManual(manual, bounds); return; }
@@ -79,31 +102,47 @@ export function mountMapInset({ map, overview, pane, handle, autoButton, paths }
     frame = requestAnimationFrame(() => { frame = null; place(); });
   }
 
-  handle.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || drag || !limits()) return;
-    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, origin: position };
-    handle.setPointerCapture(e.pointerId);
-  });
-  handle.addEventListener('pointermove', e => {
-    if (e.pointerId !== drag?.id) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) < 3 && !manual) return;
-    const bounds = limits();
-    if (!bounds) return;
-    const origin = drag.origin ?? { x: bounds.right, y: bounds.top };
-    setManual({ x: origin.x + dx, y: origin.y + dy }, bounds);
-  });
-  handle.addEventListener('lostpointercapture', e => {
-    if (e.pointerId === drag?.id) { drag = null; refresh(); }
-  });
-  handle.addEventListener('keydown', e => {
-    const step = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[e.key];
-    const bounds = limits();
-    if (!step || !bounds) return;
-    e.preventDefault();
-    const origin = position ?? { x: bounds.right, y: bounds.top };
-    setManual({ x: origin.x + step[0], y: origin.y + step[1] }, bounds);
-  });
+  for (const target of [handle, resizeHandle]) {
+    const resizing = target === resizeHandle;
+    target.addEventListener('pointerdown', e => {
+      if (e.button !== 0 || drag || (!resizing && !limits())) return;
+      drag = {
+        id: e.pointerId, x: e.clientX, y: e.clientY, origin: position,
+        width: pane.offsetWidth, height: pane.offsetHeight,
+      };
+      target.setPointerCapture(e.pointerId);
+    });
+    target.addEventListener('pointermove', e => {
+      if (e.pointerId !== drag?.id) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (resizing) {
+        resizeTo(drag.width + dx, drag.height + dy, drag.origin);
+        return;
+      }
+      if (Math.abs(dx) + Math.abs(dy) < 3 && !manual) return;
+      const bounds = limits();
+      if (!bounds) return;
+      const origin = drag.origin ?? { x: bounds.right, y: bounds.top };
+      setManual({ x: origin.x + dx, y: origin.y + dy }, bounds);
+    });
+    target.addEventListener('lostpointercapture', e => {
+      if (e.pointerId === drag?.id) { drag = null; refresh(); }
+    });
+    target.addEventListener('keydown', e => {
+      const step = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      if (resizing) {
+        resizeTo(pane.offsetWidth + step[0], pane.offsetHeight + step[1], position);
+        refresh();
+        return;
+      }
+      const bounds = limits();
+      if (!bounds) return;
+      const origin = position ?? { x: bounds.right, y: bounds.top };
+      setManual({ x: origin.x + step[0], y: origin.y + step[1] }, bounds);
+    });
+  }
   autoButton.addEventListener('click', () => {
     manual = null;
     autoButton.disabled = true;

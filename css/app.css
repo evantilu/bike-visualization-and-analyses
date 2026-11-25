@@ -185,7 +185,8 @@ label.chk{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--i
 .ride-plot{height:var(--ride-panel-height)}
 .ride-detail-pane{
   position:relative;z-index:660;display:grid;grid-template-rows:auto minmax(0,1fr);
-  width:clamp(134px,37%,226px);max-width:100%;height:clamp(106px,calc(var(--ride-map-height) * .34),176px);
+  width:var(--ride-detail-width,clamp(134px,37%,226px));max-width:100%;
+  height:var(--ride-detail-height,clamp(106px,calc(var(--ride-map-height) * .34),176px));
   margin:6px 0 0 auto;padding:4px;min-width:0;overflow:hidden;
   border:1px solid var(--line);border-radius:9px;background:var(--surface);
   box-shadow:0 2px 8px #0003
@@ -202,6 +203,16 @@ label.chk{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--i
 .ride-detail-auto:disabled{color:var(--muted);cursor:default}
 .ride-detail-status{color:var(--muted);white-space:nowrap}
 .ride-map-group .ride-detail-map{height:100%;min-height:0;border-radius:5px}
+.ride-detail-resize{
+  position:absolute;right:2px;bottom:2px;z-index:500;width:24px;height:24px;padding:0;
+  border:1px solid var(--line);border-radius:6px 0 6px 0;background:var(--surface);
+  color:var(--muted);cursor:nwse-resize;touch-action:none
+}
+.ride-detail-resize::before{
+  content:"";position:absolute;right:4px;bottom:4px;width:11px;height:11px;
+  background:repeating-linear-gradient(135deg,transparent 0 2px,currentColor 2px 3px,transparent 3px 4px);
+  clip-path:polygon(100% 0,100% 100%,0 100%)
+}
 .ride-plot{padding:0;overflow:hidden}
 .ride-map-meta{display:flex;align-items:center;justify-content:space-between;gap:6px}
 .ride-map-meta .legend{padding:0;gap:3px 8px}
