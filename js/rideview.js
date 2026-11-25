@@ -1,11 +1,11 @@
 // Single-ride map, segment selector and synchronized raw-sample charts.
-import { mountMapInset } from './map-inset.js?v=2.0.5';
-import { PanelChart } from './charts.js?v=2.0.5';
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.5';
-import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.5';
-import { interp, lastLE } from './util.js?v=2.0.5';
-import { inWindows } from './ride.js?v=2.0.5';
-import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.5';
+import { mountMapInset } from './map-inset.js?v=2.0.6';
+import { PanelChart } from './charts.js?v=2.0.6';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.6';
+import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.6';
+import { interp, lastLE } from './util.js?v=2.0.6';
+import { inWindows } from './ride.js?v=2.0.6';
+import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.6';
 
 const LAP_COLORS = ['#086b91', '#ad451c', '#7750a4', '#127153', '#a22f68', '#786017', '#3c59ae', '#495f63'];
 const rounded = (v, unit, digits = 0) => Number.isFinite(v) ? `${v.toFixed(digits)} ${unit}` : '—';
@@ -299,7 +299,8 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     const xAt = (t) => isTime ? t - xStart : interp(t, samples.t, distance) / 1000 - xStart;
     const boundaries = selected === whole ? parts() : [];
     chart = new PanelChart(chartEl, {
-      x, xMax, panels, breaks, fitHeight: true, fixedReading: true, breakGap: Math.max(isTime ? samples.maxGap : 0.05, xMax / 40),
+      x, xMax, panels, breaks, fitHeight: true, fixedReading: true, cursorLabels: true,
+      breakGap: Math.max(isTime ? samples.maxGap : 0.05, xMax / 40),
       xFormat: v => isTime ? fmtTime(v + xStart) : rounded(v + xStart, 'km', 2),
       xTick: isTime ? fmtTime : v => rounded(v + xStart, 'km', 2),
       vlines: boundaries.slice(1).map(p => xAt(p.a)).filter(v => v > 0 && v < xMax),

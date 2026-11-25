@@ -1,4 +1,4 @@
-import { median, lastLE } from './util.js?v=2.0.5';
+import { median, lastLE } from './util.js?v=2.0.6';
 
 export const SENSORS = {
   power: { name: '功率', unit: 'W', color: 'up' },

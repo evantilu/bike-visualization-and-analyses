@@ -1,9 +1,9 @@
 // Power sections of the single-ride and comparison reports.
-import { analyzePower, compareClimbs, findClimbs, kinematics, TIERS } from './power.js?v=2.0.5';
-import { loadSettings, settingsFor, riderBikeForm, rideForm, summaryChips, missingLabels } from './settings.js?v=2.0.5';
-import { PanelChart } from './charts.js?v=2.0.5';
-import { interp } from './util.js?v=2.0.5';
-import { tok, el, fmtTime, fmtSigned } from './theme.js?v=2.0.5';
+import { analyzePower, compareClimbs, findClimbs, kinematics, TIERS } from './power.js?v=2.0.6';
+import { loadSettings, settingsFor, riderBikeForm, rideForm, summaryChips, missingLabels } from './settings.js?v=2.0.6';
+import { PanelChart } from './charts.js?v=2.0.6';
+import { interp } from './util.js?v=2.0.6';
+import { tok, el, fmtTime, fmtSigned } from './theme.js?v=2.0.6';
 
 const TIER = { good: '可信', fair: '參考', none: '不估' };
 const pctTxt = (h) => `±${h * 100 < 1 ? (h * 100).toFixed(1) : Math.round(h * 100)}%`;

@@ -1,6 +1,6 @@
 # 騎乘分析 2.0
 
-**[開啟騎乘分析](https://evantilu.github.io/bike-visualization-and-analyses/?v=2.0.5)** · **[下載示範 FIT](https://evantilu.github.io/bike-visualization-and-analyses/docs/demo/sample-ride.fit)**
+**[開啟騎乘分析](https://evantilu.github.io/bike-visualization-and-analyses/?v=2.0.6)** · **[下載示範 FIT](https://evantilu.github.io/bike-visualization-and-analyses/docs/demo/sample-ride.fit)**
 
 匯入碼錶的 **FIT** 或 Strava 的 **GPX**，在同一畫面對照路線、速度、功率和心率。可以查看單趟的 Lap，也可以把兩趟騎乘沿同一路線對齊，找出在哪裡拉開差距。活動檔在瀏覽器內分析，無需登入。
 
@@ -17,7 +17,7 @@
 ![桌面版以寬視窗並排路線、浮動小地圖與實測曲線，曲線下方固定顯示游標讀值](docs/images/31_live_dashboard.jpg)
 
 - **看某一段**。切換「碼錶 Lap」或「地形分段」，再點「全程」或任一段。地圖會框出所選範圍，摘要與曲線也會切換。
-- **找路上發生了什麼**。沿曲線移動游標，或拖動下方滑桿。主地圖會標出位置，曲線下方則顯示當時的速度、功率、心率、踏頻等可用數據。
+- **找路上發生了什麼**。沿曲線移動游標，或拖動下方滑桿。主地圖會標出位置，游標與各條曲線的交點旁會顯示該項數值，圖下也保留完整讀值。
 - **換一種對照方式**。可切換「時間軸」與「距離軸」。溫度有獨立的顯示開關，讀值列也能查看當時溫度。
 
 <details>

@@ -1,11 +1,11 @@
 // File picking, ride list and routing to the single / comparison reports.
-import { parseGPX } from './gpx.js?v=2.0.5';
-import { prepareRide } from './ride.js?v=2.0.5';
-import { compareRides } from './compare.js?v=2.0.5';
-import { buildSingle } from './single.js?v=2.0.5';
-import { buildCompare } from './comparison.js?v=2.0.5';
-import { fmtTime, fmtDate, el } from './theme.js?v=2.0.5';
-import { interp } from './util.js?v=2.0.5';
+import { parseGPX } from './gpx.js?v=2.0.6';
+import { prepareRide } from './ride.js?v=2.0.6';
+import { compareRides } from './compare.js?v=2.0.6';
+import { buildSingle } from './single.js?v=2.0.6';
+import { buildCompare } from './comparison.js?v=2.0.6';
+import { fmtTime, fmtDate, el } from './theme.js?v=2.0.6';
+import { interp } from './util.js?v=2.0.6';
 
 const rides = []; // {id, fileName, ride, checked}
 const $ = (id) => document.getElementById(id);
@@ -43,7 +43,7 @@ async function importFiles(files) {
     try {
       let source;
       if (/\.fit$/i.test(f.name)) {
-        const { parseFIT } = await import('./fit.js?v=2.0.5');
+        const { parseFIT } = await import('./fit.js?v=2.0.6');
         source = await parseFIT(await f.arrayBuffer());
       } else if (/\.gpx$/i.test(f.name)) {
         source = parseGPX(await f.text());

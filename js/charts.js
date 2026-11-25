@@ -1,14 +1,36 @@
 // Canvas panel chart (shared x axis, several stacked panels, hover crosshair) and SVG bars.
-import { tok, rgba, FONT } from './theme.js?v=2.0.5';
+import { tok, rgba, FONT } from './theme.js?v=2.0.6';
 
 function niceStep(range, target) {
   const raw = range / Math.max(target, 1), p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
   return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
 }
 
+function paintCursorLabel(ctx, point, plot, colors) {
+  const { x, y, text, color, top, bottom } = point;
+  const gap = 8, height = 18, pad = 6;
+  const width = Math.ceil(ctx.measureText(text).width) + pad * 2;
+  if (width + 4 > plot.right - plot.left || height + 4 > bottom - top) return;
+  const preferred = x + gap + width <= plot.right - 2 ? x + gap : x - gap - width;
+  const bx = Math.max(plot.left + 2, Math.min(plot.right - width - 2, preferred));
+  const by = Math.max(top + 2, Math.min(bottom - height - 2, y - height / 2));
+
+  ctx.beginPath(); ctx.roundRect(bx, by, width, height, 5);
+  ctx.fillStyle = colors.surface;
+  ctx.shadowColor = rgba(colors.ink, 0.16); ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.lineWidth = 1; ctx.strokeStyle = rgba(color, 0.48); ctx.stroke();
+  ctx.fillStyle = colors.ink;
+  ctx.fillText(text, bx + width / 2, by + height / 2);
+
+  ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = colors.surface; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
 export class PanelChart {
   // opts: { x:[km], xMax, panels:[{h,label,yMin,yMax,zero,series:[{y,color,width,dash,area,fillSign,name,fmt}]}],
-  //         shades:[[a,b]], vlines:[km], tops:[{x,text}], breakGap, onHover, fitHeight, fixedReading }
+  //         shades:[[a,b]], vlines:[km], tops:[{x,text}], breakGap, onHover, fitHeight, fixedReading, cursorLabels }
   constructor(host, opts) {
     this.host = host; this.o = opts; this.cursor = null;
     this.cv = document.createElement('canvas'); host.appendChild(this.cv);
@@ -59,6 +81,8 @@ export class PanelChart {
     const font = FONT(); const o = this.o, x = o.x, bg = o.breakGap ?? 0.05;
     const broken = (i) => i > 0 && (o.breaks?.[i] || x[i] - x[i - 1] > bg);
     const top0 = this.padT, bottom = this.height - this.padB;
+    const cursorX = this.cursor == null ? null : this.xpx(x[this.cursor]);
+    const labels = [];
     // shades
     for (const [a, b] of o.shades || []) { ctx.fillStyle = rgba(neutral, 0.16); ctx.fillRect(this.xpx(a), top0 - 4, this.xpx(b) - this.xpx(a), bottom - top0 + 4); }
     for (const v of o.vlines || []) { ctx.strokeStyle = rgba(muted, 0.35); ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(this.xpx(v), top0 - 4); ctx.lineTo(this.xpx(v), bottom); ctx.stroke(); ctx.setLineDash([]); }
@@ -140,6 +164,14 @@ export class PanelChart {
         ctx.strokeStyle = s.color; ctx.lineWidth = s.width ?? 1.6; ctx.setLineDash(s.dash || []); ctx.lineJoin = 'round'; ctx.stroke(); ctx.setLineDash([]);
       }
       ctx.restore();
+      if (o.cursorLabels && cursorX != null) for (const s of p.series) {
+        const value = s.y?.[this.cursor];
+        if (!Number.isFinite(value) || value < lo || value > hi || s.fillSign) continue;
+        labels.push({
+          x: cursorX, y: Y(value), color: s.color, top: y0, bottom: y0 + p.h,
+          text: s.fmt ? s.fmt(value) : value.toFixed(1),
+        });
+      }
       if (p.title) { ctx.textAlign = 'left'; ctx.font = `600 12px ${font}`; ctx.fillStyle = ink; ctx.fillText(p.title, this.padL + 4, y0 + 12); }
       y0 += p.h + this.gap;
     }
@@ -147,7 +179,18 @@ export class PanelChart {
     ctx.fillStyle = muted; ctx.font = `500 10.5px ${font}`; ctx.textAlign = 'center';
     const st = niceStep(o.xMax, (w - 80) / 70);
     for (let v = 0; v <= o.xMax + 1e-9; v += st) ctx.fillText(o.xTick ? o.xTick(v) : +v.toFixed(2) + (v + st > o.xMax ? ' km' : ''), this.xpx(v), this.height - 7);
-    if (this.cursor != null) { const px = this.xpx(x[this.cursor]); ctx.strokeStyle = rgba(ink, 0.55); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, top0 - 4); ctx.lineTo(px, bottom); ctx.stroke(); }
+    if (cursorX != null) {
+      ctx.strokeStyle = rgba(ink, 0.55); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cursorX, top0 - 4); ctx.lineTo(cursorX, bottom); ctx.stroke();
+    }
+    if (labels.length) {
+      const plot = { left: this.padL, right: w - this.padR };
+      const colors = { ink, surface: tok('surface') };
+      ctx.save();
+      ctx.font = `600 11px ${font}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const label of labels) paintCursorLabel(ctx, label, plot, colors);
+      ctx.restore();
+    }
   }
 }
 
