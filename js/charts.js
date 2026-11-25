@@ -1,5 +1,5 @@
 // Canvas panel chart (shared x axis, several stacked panels, hover crosshair) and SVG bars.
-import { tok, rgba, FONT } from './theme.js?v=2.0.2';
+import { tok, rgba, FONT } from './theme.js?v=2.0.3';
 
 function niceStep(range, target) {
   const raw = range / Math.max(target, 1), p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;

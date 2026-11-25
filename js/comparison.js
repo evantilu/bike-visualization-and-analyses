@@ -1,12 +1,12 @@
 // Two-ride comparison report + virtual race.
-import { GRID, inWindows } from './ride.js?v=2.0.2';
-import { PanelChart, groupedBars } from './charts.js?v=2.0.2';
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.2';
-import { mountPlayer } from './player.js?v=2.0.2';
-import { tok, rgba, el, fmtTime, fmtDate, fmtSigned, diffColor } from './theme.js?v=2.0.2';
-import { interp, movingAvg, lastLE } from './util.js?v=2.0.2';
-import { buildPowerCompare } from './powerview.js?v=2.0.2';
-import { SENSORS, hasSensor } from './samples.js?v=2.0.2';
+import { GRID, inWindows } from './ride.js?v=2.0.3';
+import { PanelChart, groupedBars } from './charts.js?v=2.0.3';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.3';
+import { mountPlayer } from './player.js?v=2.0.3';
+import { tok, rgba, el, fmtTime, fmtDate, fmtSigned, diffColor } from './theme.js?v=2.0.3';
+import { interp, movingAvg, lastLE } from './util.js?v=2.0.3';
+import { buildPowerCompare } from './powerview.js?v=2.0.3';
+import { SENSORS, hasSensor } from './samples.js?v=2.0.3';
 
 const day = (r) => fmtDate(r.start).slice(0, 10);
 

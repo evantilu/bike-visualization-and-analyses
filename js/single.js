@@ -1,12 +1,12 @@
 // Single-ride report.
-import { kmSplits, speedByGrade, GRID } from './ride.js?v=2.0.2';
-import { groupedBars } from './charts.js?v=2.0.2';
-import { mountPlayer } from './player.js?v=2.0.2';
-import { tok, el, fmtTime, fmtDate, speedColor } from './theme.js?v=2.0.2';
-import { inWindows } from './ride.js?v=2.0.2';
-import { buildPowerSection } from './powerview.js?v=2.0.2';
-import { buildRideExplorer } from './rideview.js?v=2.0.2';
-import { hasSensor } from './samples.js?v=2.0.2';
+import { kmSplits, speedByGrade, GRID } from './ride.js?v=2.0.3';
+import { groupedBars } from './charts.js?v=2.0.3';
+import { mountPlayer } from './player.js?v=2.0.3';
+import { tok, el, fmtTime, fmtDate, speedColor } from './theme.js?v=2.0.3';
+import { inWindows } from './ride.js?v=2.0.3';
+import { buildPowerSection } from './powerview.js?v=2.0.3';
+import { buildRideExplorer } from './rideview.js?v=2.0.3';
+import { hasSensor } from './samples.js?v=2.0.3';
 
 const clsColor = (c) => c.key.includes('up') ? tok('up') : c.key.includes('down') ? tok('down') : tok('flat');
 

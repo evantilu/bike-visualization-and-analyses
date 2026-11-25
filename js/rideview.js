@@ -1,10 +1,10 @@
 // Single-ride map, segment selector and synchronized raw-sample charts.
-import { PanelChart } from './charts.js?v=2.0.2';
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.2';
-import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.2';
-import { interp, lastLE } from './util.js?v=2.0.2';
-import { inWindows } from './ride.js?v=2.0.2';
-import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.2';
+import { PanelChart } from './charts.js?v=2.0.3';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.3';
+import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.3';
+import { interp, lastLE } from './util.js?v=2.0.3';
+import { inWindows } from './ride.js?v=2.0.3';
+import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.3';
 
 const LAP_COLORS = ['#086b91', '#ad451c', '#7750a4', '#127153', '#a22f68', '#786017', '#3c59ae', '#495f63'];
 const rounded = (v, unit, digits = 0) => Number.isFinite(v) ? `${v.toFixed(digits)} ${unit}` : '—';
@@ -67,6 +67,15 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   const modeBar = el('div', { class: 'ride-controls', role: 'group', 'aria-label': '分段方式' });
   const lapBar = el('div', { class: 'ride-controls', role: 'group', 'aria-label': '查看分段' });
   const mapEl = el('div', { class: 'map' });
+  const detailToggle = el('input', { type: 'checkbox' });
+  detailToggle.checked = window.matchMedia('(min-width: 900px)').matches;
+  const detailMapEl = el('div', { class: 'map ride-detail-map', role: 'img', 'aria-label': '局部放大地圖' });
+  const detailStatus = el('span', { class: 'ride-detail-status' });
+  const detailPane = el('div', { class: 'ride-detail-pane' },
+    el('div', { class: 'ride-detail-label' }, '局部放大', detailStatus), detailMapEl);
+  detailPane.hidden = !detailToggle.checked;
+  const mapGroup = el('div', { class: 'ride-map-group' }, mapEl, detailPane);
+  mapGroup.classList.toggle('has-detail', detailToggle.checked);
   const legend = el('div', { class: 'legend' });
   const axisBar = el('div', { class: 'ride-controls', role: 'group', 'aria-label': '圖表橫軸' });
   const metricBar = el('div', { class: 'ride-metrics', 'aria-live': 'polite' });
@@ -93,10 +102,11 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   const table = el('div', { class: 'tablewrap' });
   sec.append(
     el('div', { class: 'ride-toolbar noprint' }, modeBar, axisBar,
-      hasTemperature ? el('label', { class: 'chk ride-temperature' }, temperature, '溫度曲線') : null),
+      hasTemperature ? el('label', { class: 'chk ride-temperature' }, temperature, '溫度曲線') : null,
+      el('label', { class: 'chk' }, detailToggle, '局部地圖')),
     lapBar, metricBar,
     el('div', { class: 'ride-stage' },
-      el('div', { class: 'ride-map-pane' }, mapEl,
+      el('div', { class: 'ride-map-pane' }, mapGroup,
         el('div', { class: 'ride-map-meta' }, legend,
           el('button', { class: 'btn noprint', onclick: fitSelected }, '重設地圖'))),
       el('div', { class: 'ride-chart-pane' }, chartEl,
@@ -130,6 +140,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     return slices;
   };
   let tracks = [], visible = [];
+  let detailMap, detailOverlay, detailFrame = null, detailFocus = null, previousDetailPoint = null;
   function updateTracks() {
     visible = pointSlices(selected.a, selected.b);
     const layers = mode === 'lap' && selected === whole ? laps : [selected];
@@ -137,16 +148,18 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
       a, lat: ride.lat.subarray(a, b), lon: ride.lon.subarray(a, b), color: mode === 'lap' ? part.color : null,
     })));
   }
+  function trackColor(track, i) {
+    const v = trackSpeed[i];
+    const missing = !Number.isFinite(v) || (!hasDeviceSpeed && inWindows(ride.d[i], ride.glitches));
+    return track.color ?? (missing ? tok('neutral') : speedColor(v, speedLo, speedHi));
+  }
+
   const overlay = canvasOverlay(map, (ctx) => {
     for (const track of tracks) {
       const lane = laneScreen(map, track.lat, track.lon, 4);
       drawLane(ctx, lane, {
         width: 5,
-        colorAt: i => {
-          const j = track.a + i, v = trackSpeed[j];
-          const missing = !Number.isFinite(v) || (!hasDeviceSpeed && inWindows(ride.d[j], ride.glitches));
-          return track.color ?? (missing ? tok('neutral') : speedColor(v, speedLo, speedHi));
-        },
+        colorAt: i => trackColor(track, track.a + i),
       });
       if (mode === 'terrain') kmMarkers(ctx, lane, i => ride.d[track.a + i], ride.total);
     }
@@ -175,6 +188,49 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     if (p) { const { x, y } = project(p); dot(ctx, x, y, tok('ink'), 6); }
   });
 
+  function drawDetail(ctx) {
+    if (!detailFocus) return;
+    const { point, index } = detailFocus;
+    const from = Math.max(0, lastLE(ride.d, ride.d[index] - 340));
+    const to = lastLE(ride.d, ride.d[index] + 340) + 1;
+    for (const track of tracks) {
+      const a = Math.max(track.a, from), b = Math.min(track.a + track.lat.length, to);
+      if (b - a < 2) continue;
+      const lane = laneScreen(detailMap, ride.lat.subarray(a, b), ride.lon.subarray(a, b), 3);
+      drawLane(ctx, lane, { width: 4, colorAt: i => trackColor(track, a + i) });
+    }
+    const { x, y } = detailMap.latLngToContainerPoint(point);
+    dot(ctx, x, y, tok('ink'), 5);
+  }
+
+  function updateDetail() {
+    if (!detailToggle.checked || detailFrame != null) return;
+    detailFrame = requestAnimationFrame(() => {
+      detailFrame = null;
+      const first = visible[0]?.[0];
+      const point = cursor == null
+        ? (first == null ? null : [ride.lat[first], ride.lon[first]])
+        : gpsAt(cursor);
+      const status = point ? '' : '沒有 GPS 定位';
+      if (detailStatus.textContent !== status) detailStatus.textContent = status;
+      if (!point) {
+        detailFocus = null;
+        detailOverlay?.redraw();
+        return;
+      }
+      detailFocus = { point, index: cursor == null ? first : lastLE(trackTime, cursor) };
+      if (!detailMap) {
+        detailMap = makeMap(detailMapEl, { interactive: false });
+        detailMap.setView(point, 17, { animate: false });
+        detailOverlay = canvasOverlay(detailMap, drawDetail);
+      } else if (point.some((coordinate, i) => coordinate !== previousDetailPoint[i])) {
+        detailMap.setView(point, 17, { animate: false });
+      }
+      previousDetailPoint = point;
+      detailOverlay.redraw();
+    });
+  }
+
   function showSample(i) {
     cursor = i == null ? null : samples.t[i];
     const readings = channels.map(([label, get]) => i == null ? '—' : get(i));
@@ -184,6 +240,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
       range.setAttribute('aria-valuetext', channels.map(([label], j) => `${label} ${readings[j]}`).join('，'));
     }
     overlay.redraw();
+    updateDetail();
   }
 
   function drawChart(sample = null) {
@@ -301,8 +358,26 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     }
   }
 
-  const mapObserver = new ResizeObserver(fitSelected);
+  const mapObserver = new ResizeObserver(entries => {
+    if (entries.some(entry => entry.target === mapEl)) fitSelected();
+    if (entries.some(entry => entry.target === detailMapEl) && detailToggle.checked) {
+      detailMap?.invalidateSize({ pan: false });
+      updateDetail();
+    }
+  });
   mapObserver.observe(mapEl);
+  mapObserver.observe(detailMapEl);
+  detailToggle.addEventListener('change', () => {
+    detailPane.hidden = !detailToggle.checked;
+    mapGroup.classList.toggle('has-detail', detailToggle.checked);
+    if (detailToggle.checked) {
+      detailMap?.invalidateSize({ pan: false });
+      updateDetail();
+    } else if (detailFrame != null) {
+      cancelAnimationFrame(detailFrame);
+      detailFrame = null;
+    }
+  });
   temperature.addEventListener('change', () => drawChart(cursor == null ? null : +range.value));
 
   range.addEventListener('input', () => {
@@ -315,6 +390,12 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   select(whole);
   return {
     selectTerrain: (i) => { mode = 'terrain'; select(hills[i], true); },
-    destroy: () => { mapObserver.disconnect(); chart?.destroy(); map.remove(); },
+    destroy: () => {
+      mapObserver.disconnect();
+      if (detailFrame != null) cancelAnimationFrame(detailFrame);
+      chart?.destroy();
+      detailMap?.remove();
+      map.remove();
+    },
   };
 }
