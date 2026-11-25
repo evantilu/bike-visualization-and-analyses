@@ -1,10 +1,11 @@
 // Single-ride map, segment selector and synchronized raw-sample charts.
-import { PanelChart } from './charts.js?v=2.0.3';
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.3';
-import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.3';
-import { interp, lastLE } from './util.js?v=2.0.3';
-import { inWindows } from './ride.js?v=2.0.3';
-import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.3';
+import { mountMapInset } from './map-inset.js?v=2.0.4';
+import { PanelChart } from './charts.js?v=2.0.4';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.4';
+import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.4';
+import { interp, lastLE } from './util.js?v=2.0.4';
+import { inWindows } from './ride.js?v=2.0.4';
+import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.4';
 
 const LAP_COLORS = ['#086b91', '#ad451c', '#7750a4', '#127153', '#a22f68', '#786017', '#3c59ae', '#495f63'];
 const rounded = (v, unit, digits = 0) => Number.isFinite(v) ? `${v.toFixed(digits)} ${unit}` : '—';
@@ -71,11 +72,14 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   detailToggle.checked = window.matchMedia('(min-width: 900px)').matches;
   const detailMapEl = el('div', { class: 'map ride-detail-map', role: 'img', 'aria-label': '局部放大地圖' });
   const detailStatus = el('span', { class: 'ride-detail-status' });
+  const detailHandle = el('button', { type: 'button', class: 'ride-detail-handle',
+    title: '拖曳或使用方向鍵移動局部地圖', 'aria-label': '移動局部地圖，可用方向鍵' }, '局部放大');
+  const detailAuto = el('button', { type: 'button', class: 'ride-detail-auto', title: '恢復自動位置',
+    'aria-label': '恢復局部地圖自動位置', disabled: true }, '自動');
   const detailPane = el('div', { class: 'ride-detail-pane' },
-    el('div', { class: 'ride-detail-label' }, '局部放大', detailStatus), detailMapEl);
+    el('div', { class: 'ride-detail-label' }, detailHandle, detailStatus, detailAuto), detailMapEl);
   detailPane.hidden = !detailToggle.checked;
   const mapGroup = el('div', { class: 'ride-map-group' }, mapEl, detailPane);
-  mapGroup.classList.toggle('has-detail', detailToggle.checked);
   const legend = el('div', { class: 'legend' });
   const axisBar = el('div', { class: 'ride-controls', role: 'group', 'aria-label': '圖表橫軸' });
   const metricBar = el('div', { class: 'ride-metrics', 'aria-live': 'polite' });
@@ -141,6 +145,10 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   };
   let tracks = [], visible = [];
   let detailMap, detailOverlay, detailFrame = null, detailFocus = null, previousDetailPoint = null;
+  const inset = mountMapInset({
+    map, overview: mapEl, pane: detailPane, handle: detailHandle, autoButton: detailAuto,
+    paths: () => tracks.map(track => Array.from(track.lat, (lat, i) => map.latLngToContainerPoint([lat, track.lon[i]]))),
+  });
   function updateTracks() {
     visible = pointSlices(selected.a, selected.b);
     const layers = mode === 'lap' && selected === whole ? laps : [selected];
@@ -211,7 +219,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
       const point = cursor == null
         ? (first == null ? null : [ride.lat[first], ride.lon[first]])
         : gpsAt(cursor);
-      const status = point ? '' : '沒有 GPS 定位';
+      const status = point ? '' : '無 GPS';
       if (detailStatus.textContent !== status) detailStatus.textContent = status;
       if (!point) {
         detailFocus = null;
@@ -344,6 +352,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
       el('span', {}, '● 起點　■ 停車'),
       !visible.length ? el('span', {}, '這段沒有 GPS 定位') : null);
     fitSelected();
+    inset.refresh();
     drawChart();
     drawTable();
     if (scroll) sec.scrollIntoView({ block: 'start' });
@@ -362,6 +371,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     if (entries.some(entry => entry.target === mapEl)) fitSelected();
     if (entries.some(entry => entry.target === detailMapEl) && detailToggle.checked) {
       detailMap?.invalidateSize({ pan: false });
+      inset.refresh();
       updateDetail();
     }
   });
@@ -369,9 +379,9 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   mapObserver.observe(detailMapEl);
   detailToggle.addEventListener('change', () => {
     detailPane.hidden = !detailToggle.checked;
-    mapGroup.classList.toggle('has-detail', detailToggle.checked);
     if (detailToggle.checked) {
       detailMap?.invalidateSize({ pan: false });
+      inset.refresh();
       updateDetail();
     } else if (detailFrame != null) {
       cancelAnimationFrame(detailFrame);
@@ -392,6 +402,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     selectTerrain: (i) => { mode = 'terrain'; select(hills[i], true); },
     destroy: () => {
       mapObserver.disconnect();
+      inset.destroy();
       if (detailFrame != null) cancelAnimationFrame(detailFrame);
       chart?.destroy();
       detailMap?.remove();
