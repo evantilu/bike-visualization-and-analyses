@@ -2,9 +2,10 @@
   "name": "bike-visualization-and-analyses",
   "private": true,
   "type": "module",
-  "description": "Browser-only GPX ride analysis and two-ride comparison with a virtual race",
+  "description": "Browser-only FIT and GPX ride analysis, lap mapping and virtual races",
   "scripts": {
-    "test": "node tests/regress.mjs",
+    "test": "node tests/regress.mjs && node tests/fit.mjs",
     "serve": "python3 -m http.server 8000"
-  }
+  },
+  "version": "2.0.0"
 }

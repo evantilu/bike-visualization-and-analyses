@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>騎乘分析</title>
+<title>騎乘分析 2.0</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
@@ -14,21 +14,21 @@
 <div class="wrap">
   <header class="top">
     <div>
-      <h1>騎乘分析</h1>
-      <p class="sub">丟進 Strava 匯出的 GPX。勾一趟看單趟分析，勾兩趟看比較與虛擬對騎。檔案只在你的瀏覽器裡計算，不會上傳。</p>
+      <h1>騎乘分析 2.0</h1>
+      <p class="sub">匯入碼錶的 FIT 或 Strava 的 GPX。勾一趟看路線與分段，勾兩趟跑同路線對騎。檔案在瀏覽器內分析。</p>
     </div>
     <button class="btn" id="printBtn" hidden>列印／存成 PDF</button>
   </header>
 
   <section class="card picker" id="picker">
     <div class="drop" id="drop">
-      <input type="file" id="fileInput" accept=".gpx,application/gpx+xml" multiple hidden>
-      <button class="btn primary" id="pickBtn">選擇 GPX 檔案（可多選）</button>
+      <input type="file" id="fileInput" accept=".fit,.gpx,application/gpx+xml" multiple hidden>
+      <button class="btn primary" id="pickBtn">選擇 FIT／GPX（可多選）</button>
       <span>或把檔案拖到這裡</span>
     </div>
     <div class="tablewrap" id="listWrap" hidden>
       <table class="list" id="list">
-        <thead><tr><th></th><th>日期</th><th>名稱</th><th class="n">距離</th><th class="n">移動時間</th><th class="n">均速</th><th class="n">爬升</th><th>檔名</th></tr></thead>
+        <thead><tr><th></th><th>日期</th><th>名稱</th><th class="n">距離</th><th class="n">時間</th><th class="n">均速</th><th class="n">爬升</th><th>檔名</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -37,6 +37,7 @@
       <button class="btn primary" id="goBtn" disabled>分析</button>
     </div>
     <p class="err" id="err" hidden></p>
+    <p class="note" id="importNote" role="status" hidden></p>
   </section>
 
   <main id="report"></main>

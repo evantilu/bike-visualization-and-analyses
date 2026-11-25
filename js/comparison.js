@@ -4,8 +4,9 @@ import { PanelChart, groupedBars } from './charts.js';
 import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js';
 import { mountPlayer } from './player.js';
 import { tok, rgba, el, fmtTime, fmtDate, fmtSigned, diffColor } from './theme.js';
-import { interp, movingAvg } from './util.js';
+import { interp, movingAvg, lastLE } from './util.js';
 import { buildPowerCompare } from './powerview.js';
+import { SENSORS, hasSensor } from './samples.js';
 
 const day = (r) => fmtDate(r.start).slice(0, 10);
 
@@ -73,12 +74,20 @@ export function buildCompare(host, cmp, { swap = false, onSwap } = {}) {
     const p0 = am.latLngToContainerPoint([R.lat[0], R.lon[0]]); dot(ctx, p0.x, p0.y, '#3fae49', 5);
   });
 
-  // ---- 4-panel overlay chart
+  // ---- Route-aligned speeds, time gaps and available measured sensors
+  const measuredPanels = Object.entries(cmp.readings).flatMap(([key, values]) => {
+    const { name, unit } = SENSORS[key];
+    const series = [[redRole, RED, '紅'], [blueRole, BLUE, '藍']].flatMap(([role, color, label]) => {
+      const y = values[role];
+      return y?.some(Number.isFinite) ? [{ y, color, name: `${label} ${name}`, fmt: v => `${v.toFixed(0)} ${unit}` }] : [];
+    });
+    return series.length ? [{ h: 105, label: unit, title: `實測${name}`, yMin: key === 'hr' ? undefined : 0, series }] : [];
+  });
   const sOn = [], eOn = []; for (let i = 0; i < O.n; i++) if (Number.isFinite(cmp.sO[i])) { sOn.push(cmp.sO[i]); eOn.push(O.ele[i]); }
   const eleO = Float64Array.from(g, s => interp(s, sOn, eOn)), eleR = Float64Array.from(g, s => R.grid.ele[Math.min(R.grid.ele.length - 1, Math.round(s / GRID))]);
   const eleB = blueRole === 'R' ? eleR : eleO, eleRd = blueRole === 'R' ? eleO : eleR;
   const cSec = el('section', { class: 'rsec' }, el('h2', {}, '完整疊圖'),
-    el('p', { class: 'lead' }, '橫軸是參考路線上的距離，灰底是不比較的地方。① 兩條海拔線重合代表對齊正確；② 同一位置的速度；③ 逐點速度差；④ 累計時間差，可以想成兩趟同時出發的虛擬對騎。'));
+    el('p', { class: 'lead' }, '橫軸是參考路線上的距離，灰底是不比較的地方。① 兩條海拔線重合代表對齊正確；② 同一位置的速度；③ 逐點速度差；④ 累計時間差。騎乘若含實測資料，下方會疊上可比位置的感測器曲線。'));
   const cEl = el('div', { class: 'chart' }); cSec.append(cEl);
   cSec.append(el('div', { class: 'legend' }, el('span', {}, el('i', { style: `background:${BLUE}` }), `藍 ${nameB}`), el('span', {}, el('i', { style: `background:${RED}` }), `紅 ${nameR}`),
     hasAdj ? el('span', {}, el('i', { style: `background:${tok('ink')};height:0;border-top:2px dashed ${tok('ink')}` }), '扣除停車影響') : null));
@@ -90,6 +99,7 @@ export function buildCompare(host, cmp, { swap = false, onSwap } = {}) {
       { h: 160, label: 'km/h', title: '② 速度', yMin: 0, series: [{ y: Vr, color: RED, width: 1.4, name: '紅', fmt: v => v.toFixed(1) + ' km/h' }, { y: Vb, color: BLUE, width: 1.4, name: '藍', fmt: v => v.toFixed(1) + ' km/h' }] },
       { h: 100, label: 'km/h', title: '③ 速度差（藍 − 紅）', zero: true, yMin: -15, yMax: 15, series: [{ y: movingAvg(diff, 3), fillSign: { pos: BLUE, neg: RED }, color: BLUE }] },
       { h: 120, label: '秒', title: '④ 累計時間差（負＝藍領先）', zero: true, series: [{ y: gap, color: tok('ink'), width: 2, name: '時間差', fmt: v => fmtSigned(v, 1, ' 秒') }, ...(hasAdj ? [{ y: gapAdj, color: tok('ink'), width: 1.3, dash: [5, 3], name: '扣除停車', fmt: v => fmtSigned(v, 1, ' 秒') }] : [])] },
+      ...measuredPanels,
     ],
     shades: excl.map(([a, b]) => [a / 1000, b / 1000]), vlines: segs.slice(0, -1).map(s => s.d1 / 1000), tops: segs.map(s => ({ x: (s.d0 + s.d1) / 2000, text: '#' + s.n })),
     onHover: (k) => { mapCursor = k; dovl?.redraw(); } });
@@ -117,18 +127,41 @@ export function buildCompare(host, cmp, { swap = false, onSwap } = {}) {
   dSec.append(el('div', { class: 'legend' }, el('span', {}, '紅較快'), el('span', { style: `display:inline-block;width:180px;height:10px;border-radius:5px;background:linear-gradient(90deg,${RED},${tok('neutral')},${BLUE})` }), el('span', {}, '藍較快'),
     el('span', {}, el('i', { style: `background:${tok('neutral')};width:10px;height:10px` }), '方塊＝停車位置')));
 
+  // Report each rider's time-weighted mean over the same pair of road boundaries.
+  const sensorColumns = ['power', 'hr'].flatMap(key => cmp.readings[key]
+    ? [[redRole, '紅'], [blueRole, '藍']].map(([role, name]) => ({ key, role, title: `${name} 均${SENSORS[key].name}` }))
+    : []);
+  const segmentSensor = (s, { key, role }) => {
+    const y = cmp.readings[key][role];
+    const time = cmp.T[role];
+    let sum = 0, observed = 0, total = 0;
+    const first = lastLE(g, s.d0), last = lastLE(g, s.d1);
+    if (y && first >= 0) for (let i = first + 1; i <= last; i++) {
+      const dt = time[i] - time[i - 1];
+      total += dt;
+      if (Number.isFinite(y[i]) && Number.isFinite(y[i - 1])) {
+        sum += (y[i] + y[i - 1]) / 2 * dt;
+        observed += dt;
+      }
+    }
+    const coverage = total > 0 ? Math.round(observed / total * 100) : 0;
+    return observed > 0 ? `${Math.round(sum / observed)} ${SENSORS[key].unit}${coverage < 100 ? `（${coverage}%）` : ''}` : '—';
+  };
+
   // ---- segment comparison
   const sSec = el('section', { class: 'rsec' }, el('h2', {}, '分段比較'), el('p', { class: 'lead' }, '依參考路線的海拔自動切段。上方數字＝藍比紅快（−）或慢（+）幾秒；差距 5 秒以內可視為打平（每個計時點約 ±1–2 秒誤差）。'));
   const sb = el('div', { class: 'bars' }); sSec.append(sb); host.append(sSec);
   groupedBars(sb, { cats: segs.map(s => [`#${s.n} ${s.cls.label}`, `${(s.d0 / 1000).toFixed(1)}–${(s.d1 / 1000).toFixed(1)} km`, `${s.grade >= 0 ? '+' : ''}${s.grade.toFixed(1)}%`]),
     series: [{ name: '紅', color: RED, values: segs.map(s => (s.d1 - s.d0) / s.tr * 3.6) }, { name: '藍', color: BLUE, values: segs.map(s => (s.d1 - s.d0) / s.tb * 3.6) }],
     above: segs.map(s => ({ text: fmtSigned(s.dt, 0) + 's' })), yLabel: '平均速度 km/h' });
+  if (sensorColumns.length) sSec.append(el('p', { class: 'note' }, '實測欄按可比路段內有讀值的時間加權。括號顯示可用資料占該段時間的比例。'));
   sSec.append(el('div', { class: 'tablewrap' }, el('table', { class: 'segtable' },
-    el('thead', {}, el('tr', {}, ...['#', '類型', '範圍 km', '海拔 m', '坡度', '紅 用時', '藍 用時', '紅 km/h', '藍 km/h', '差', '累計'].map((h, i) => el('th', { class: i > 1 ? 'n' : '' }, h)))),
+    el('thead', {}, el('tr', {}, ...['#', '類型', '範圍 km', '海拔 m', '坡度', '紅 用時', '藍 用時', '紅 km/h', '藍 km/h', '差', '累計', ...sensorColumns.map(c => c.title)].map((h, i) => el('th', { class: i > 1 ? 'n' : '' }, h)))),
     el('tbody', {}, segs.map(s => el('tr', {}, el('td', {}, '#' + s.n), el('td', {}, s.cls.label), el('td', { class: 'n' }, `${(s.d0 / 1000).toFixed(2)}–${(s.d1 / 1000).toFixed(2)}`),
       el('td', { class: 'n' }, `${Math.round(s.z0)}→${Math.round(s.z1)}`), el('td', { class: 'n' }, `${s.grade >= 0 ? '+' : ''}${s.grade.toFixed(1)}%`),
       el('td', { class: 'n' }, fmtTime(s.tr)), el('td', { class: 'n' }, fmtTime(s.tb)), el('td', { class: 'n' }, ((s.d1 - s.d0) / s.tr * 3.6).toFixed(1)), el('td', { class: 'n' }, ((s.d1 - s.d0) / s.tb * 3.6).toFixed(1)),
-      el('td', { class: s.dt < 0 ? 'n neg' : 'n pos' }, fmtSigned(s.dt, 0) + 's'), el('td', { class: 'n' }, fmtSigned(s.cum, 0) + 's')))))));
+      el('td', { class: s.dt < 0 ? 'n neg' : 'n pos' }, fmtSigned(s.dt, 0) + 's'), el('td', { class: 'n' }, fmtSigned(s.cum, 0) + 's'),
+      ...sensorColumns.map(column => el('td', { class: 'n' }, segmentSensor(s, column)))))))));
 
   // ---- grade bins
   const bins = cmp.bins.map(b => ({ ...b, vb: blueRole === 'R' ? b.vR : b.vO, vr: blueRole === 'R' ? b.vO : b.vR })).filter(b => b.dist > 0);
@@ -138,7 +171,13 @@ export function buildCompare(host, cmp, { swap = false, onSwap } = {}) {
     above: bins.map(b => ({ text: fmtSigned(b.vb - b.vr, 1) + ' km/h' })), yLabel: '平均速度 km/h', height: 280 });
 
   // ---- power comparison
-  buildPowerCompare(host, cmp, { blueRole, nameB, nameR });
+  if (!hasSensor(R, 'power') || !hasSensor(O, 'power')) {
+    const estimate = el('details', { class: 'rsec' }, el('summary', {}, '比較估算功率'));
+    host.append(estimate);
+    estimate.addEventListener('toggle', () => {
+      if (estimate.open && estimate.children.length === 1) buildPowerCompare(estimate, cmp, { blueRole, nameB, nameR });
+    });
+  }
 
   // ---- virtual race
   const pSec = el('section', { class: 'rsec' }, el('h2', {}, '虛擬對騎'), el('p', { class: 'lead' }, '兩趟放在同一條路線上同時出發；不比較的路段兩個點都直接跳過，時間差照樣延續。'));

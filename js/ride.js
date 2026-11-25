@@ -2,6 +2,8 @@
 // elevation gain and automatic grade segmentation. Pure JS (browser + Node).
 import { median, cumsum, lastLE, movingAvg, clamp } from './util.js';
 
+import { SENSORS, sampleGap, activeSeconds } from './samples.js';
+
 export const R_EARTH = 6371000;
 export const GRID = 10; // metres between grid samples
 // No points for this long = the recording was paused (auto or by hand). GPX keeps no pause marks;
@@ -33,11 +35,25 @@ export function firstCrossing(pos, clk, g) {
 export function prepareRide(gpx, meta = {}) {
   // clean: finite time, strictly increasing
   const raw = gpx.points.filter(p => Number.isFinite(p.t));
-  const pts = [];
-  for (const p of raw) { if (!pts.length || p.t > pts[pts.length - 1].t) pts.push(p); }
+  const records = [];
+  for (const p of raw) if (!records.length || p.t > records.at(-1).t) records.push(p);
+  const pts = records.filter(p => Number.isFinite(p.lat) && Math.abs(p.lat) <= 90
+    && Number.isFinite(p.lon) && Math.abs(p.lon) <= 180);
   const n = pts.length;
-  if (n < 10) throw new Error('GPX 軌跡點太少（少於 10 點）');
+  if (n < 10) throw new Error('GPS 軌跡點太少（少於 10 點）');
   const t0 = pts[0].t;
+  const start = Number.isFinite(gpx.session?.start) ? gpx.session.start : t0;
+  const intervals = gpx.timerIntervals?.map(([a, b]) => [(a - t0) / 1000, (b - t0) / 1000]);
+  const sampleTime = Float64Array.from(records, p => (p.t - start) / 1000);
+  const sensors = {};
+  const gpsSensors = {};
+  for (const key of Object.keys(SENSORS)) {
+    const values = Float64Array.from(records, p => p[key]);
+    if (values.some(Number.isFinite)) {
+      sensors[key] = values;
+      gpsSensors[key] = Float64Array.from(pts, p => p[key]);
+    }
+  }
   const lat = Float64Array.from(pts, p => p.lat), lon = Float64Array.from(pts, p => p.lon);
   const t = Float64Array.from(pts, p => (p.t - t0) / 1000);
   // elevation: fill gaps by linear interpolation
@@ -57,9 +73,11 @@ export function prepareRide(gpx, meta = {}) {
   const paused = new Uint8Array(n);
   const mstep = new Float64Array(n);
   for (let i = 1; i < n; i++) {
-    const isPause = dt[i] > Math.max(3, 2.5 * medDt) && (dt[i] >= PAUSE_GAP || step[i] / dt[i] < 1.0);
+    const active = intervals ? activeSeconds(intervals, t[i - 1], t[i]) : dt[i];
+    const isPause = intervals ? active < dt[i] - 0.001
+      : dt[i] > Math.max(3, 2.5 * medDt) && (dt[i] >= PAUSE_GAP || step[i] / dt[i] < 1.0);
     paused[i] = isPause ? 1 : 0;
-    mstep[i] = isPause ? medDt : dt[i];
+    mstep[i] = intervals ? active : isPause ? medDt : dt[i];
   }
   const d = cumsum(Float64Array.from(step, (s, i) => (paused[i] ? 0 : s)));
   const mtP = cumsum(mstep); // clock without the pauses (s); speeds are measured on it
@@ -87,6 +105,7 @@ export function prepareRide(gpx, meta = {}) {
   const mt = cumsum(Float64Array.from(mstep, (m, i) => (still[i] ? 0 : m)));
   // distance grid
   const total = d[n - 1];
+  if (total < GRID) throw new Error('GPS 軌跡距離太短，無法分析路線');
   const gd = [];
   for (let g = 0; g <= total; g += GRID) gd.push(g);
   const G = gd.length;
@@ -135,11 +154,18 @@ export function prepareRide(gpx, meta = {}) {
   }
   const ride = {
     id: meta.id ?? '', fileName: meta.fileName ?? '', name: gpx.name || meta.fileName || '',
-    start: t0, n, lat, lon, ele, t, x, y, d, dt, step, mt, paused, still, v, rawV, lat0, proj,
+    start, format: gpx.format ?? 'GPX', session: gpx.session, laps: gpx.laps ?? [],
+    samples: {
+      records, t: sampleTime, sensors, gpsSensors, maxGap: sampleGap(sampleTime),
+      timerIntervals: gpx.timerIntervals?.map(([a, b]) => [(a - start) / 1000, (b - start) / 1000]),
+    },
+    trackSpeed: Float64Array.from(pts, p => p.speed), trackStart: t0, n, lat, lon, ele, t, x, y, d, dt, step, mt, paused, still, v, rawV, lat0, proj,
     extras, grid, glitches, stops,
     total, elapsed: t[n - 1], moving: mt[n - 1],
     avg: total / Math.max(mt[n - 1], 1) * 3.6, vmax, vmaxD,
-    gain: elevationGain(movingAvg(ele, 15), 0.5), eleMin: Math.min(...ele), eleMax: Math.max(...ele),
+    gain: elevationGain(movingAvg(ele, 15), 0.5),
+    eleMin: ele.reduce((min, v) => Math.min(min, v), Infinity),
+    eleMax: ele.reduce((max, v) => Math.max(max, v), -Infinity),
   };
   // out-and-back: split the profile at the turnaround (farthest point from the start)
   const force = [];

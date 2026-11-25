@@ -2,6 +2,7 @@
 // time both riders through 10 m gates, and build virtual-race timelines.
 import { makeProjection, firstCrossing, GRID, segmentProfile, inWindows, mergeWindows, GRADE_BINS } from './ride.js';
 import { interp, lastLE } from './util.js';
+import { sensorAt } from './samples.js';
 
 const MATCH_R = 25;       // m: a point closer than this to the other track is "on route"
 const START_MARGIN = 200; // m skipped after a standing start
@@ -258,12 +259,29 @@ export function compareRides(r1, r2, opts = {}) {
   }
   for (const bn of bins) { bn.vR = bn.dist / bn.tR * 3.6; bn.vO = bn.dist / bn.tO * 3.6; }
 
+  // Map measured streams to the same positions as the speed comparison.
+  const readings = {};
+  for (const key of ['power', 'hr', 'cad']) {
+    const r = R.samples.gpsSensors[key], o = O.samples.gpsSensors[key];
+    if (!r && !o) continue;
+    readings[key] = {
+      R: r && Float64Array.from(grid, s => {
+        const i = lastLE(R.d, s);
+        return sensorAt(R, r, R.d, s, i, Math.min(i + 1, R.n - 1));
+      }),
+      O: o && Float64Array.from(grid, s => {
+        const k = lastLE(sOn, s);
+        if (k < 0) return NaN;
+        return sensorAt(O, o, sO, s, onIdx[k], onIdx[k + 1] ?? onIdx[k]);
+      }),
+    };
+  }
   const compLen = sections.reduce((s, [a, b]) => s + (b - a), 0);
   return {
     R, O, refIs1, f1, f2, sO, runs: sig, zones, sections, grid: Float64Array.from(grid), secId,
     T: { R: TR, O: TO }, Tadj: { R: adjR.T, O: adjO.T }, costs: { R: adjR.costs, O: adjO.costs },
     V: { R: Float64Array.from(vR), O: Float64Array.from(vO) }, ele: Float64Array.from(ele), grade: Float64Array.from(grade),
-    stops, glitches, segments: segs, bins, compLen,
+    stops, glitches, segments: segs, bins, compLen, readings,
   };
 }
 

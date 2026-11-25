@@ -70,7 +70,7 @@ export function kmMarkers(ctx, lane, sAt, total, { every = 1000, r = 8 } = {}) {
   let span = 0; for (let k = 1; k < X.length; k++) span += Math.hypot(X[k] - X[k - 1], Y[k] - Y[k - 1]);
   const pxPerM = span / Math.max(total, 1); let step = every;
   for (const m of [1000, 2000, 5000, 10000, 20000]) { step = m; if (m * pxPerM >= 30) break; }
-  let next = step; const font = FONT();
+  let next = (Math.floor(sAt(I[0]) / step) + 1) * step; const font = FONT();
   for (let k = 1; k < X.length; k++) {
     const s0 = sAt(I[k - 1]), s1 = sAt(I[k]);
     while (s1 >= next && s0 < next) {

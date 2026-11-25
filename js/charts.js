@@ -17,18 +17,20 @@ export class PanelChart {
     this.height = this.padT + this.padB + opts.panels.reduce((s, p) => s + p.h, 0) + this.gap * (opts.panels.length - 1);
     this.cv.style.height = this.height + 'px';
     const move = (e) => { const r = this.cv.getBoundingClientRect(); const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left; this.hover(cx); };
-    this.cv.addEventListener('mousemove', move); this.cv.addEventListener('touchmove', move, { passive: true });
+    this.cv.addEventListener('mousemove', move); this.cv.addEventListener('click', move); this.cv.addEventListener('touchmove', move, { passive: true });
     this.cv.addEventListener('mouseleave', () => { this.cursor = null; this.tip.hidden = true; this.draw(); opts.onHover?.(null); });
-    new ResizeObserver(() => this.draw()).observe(host);
+    this.observer = new ResizeObserver(() => this.draw());
+    this.observer.observe(host);
   }
+  destroy() { this.observer.disconnect(); this.cv.remove(); this.tip.remove(); }
   xpx(v) { return this.padL + (v / this.o.xMax) * (this.w - this.padL - this.padR); }
   hover(cx) {
     const x = this.o.x; const v = (cx - this.padL) / (this.w - this.padL - this.padR) * this.o.xMax;
     let lo = 0, hi = x.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (x[m] <= v) lo = m; else hi = m; }
     const i = Math.abs(x[hi] - v) < Math.abs(x[lo] - v) ? hi : lo;
     if (Math.abs(x[i] - v) > (this.o.breakGap ?? 0.05)) { this.cursor = null; this.tip.hidden = true; this.draw(); this.o.onHover?.(null); return; }
-    this.cursor = i; this.draw(); this.o.onHover?.(x[i]);
-    const rows = [`<b>${x[i].toFixed(2)} km</b>`];
+    this.cursor = i; this.draw(); this.o.onHover?.(x[i], i);
+    const rows = [`<b>${this.o.xFormat ? this.o.xFormat(x[i]) : x[i].toFixed(2) + ' km'}</b>`];
     for (const p of this.o.panels) for (const s of p.series) if (s.name && s.y) { const val = s.y[i]; if (Number.isFinite(val)) rows.push(`<i style="background:${s.color}"></i>${s.name}：${s.fmt ? s.fmt(val) : val.toFixed(1)}`); }
     if (this.o.tipExtra) { const t = this.o.tipExtra(i); if (t) rows.push(t); }
     this.tip.innerHTML = rows.join('<br>'); this.tip.hidden = false;
@@ -48,6 +50,7 @@ export class PanelChart {
     ctx.clearRect(0, 0, w, this.height);
     const ink = tok('ink'), muted = tok('muted'), line = tok('line'), neutral = tok('neutral');
     const font = FONT(); const o = this.o, x = o.x, bg = o.breakGap ?? 0.05;
+    const broken = (i) => i > 0 && (o.breaks?.[i] || x[i] - x[i - 1] > bg);
     const top0 = this.padT, bottom = this.height - this.padB;
     // shades
     for (const [a, b] of o.shades || []) { ctx.fillStyle = rgba(neutral, 0.16); ctx.fillRect(this.xpx(a), top0 - 4, this.xpx(b) - this.xpx(a), bottom - top0 + 4); }
@@ -56,8 +59,11 @@ export class PanelChart {
     for (const t of o.tops || []) ctx.fillText(t.text, this.xpx(t.x), 13);
     let y0 = top0;
     for (const p of o.panels) {
-      const vals = []; for (const s of p.series) for (const arr of [s.y, ...(s.band || [])]) if (arr) for (const v of arr) if (Number.isFinite(v)) vals.push(v);
-      let lo = p.yMin ?? Math.min(...vals), hi = p.yMax ?? Math.max(...vals);
+      let min = Infinity, max = -Infinity;
+      for (const s of p.series) for (const arr of [s.y, ...(s.band || [])]) if (arr) {
+        for (const v of arr) if (Number.isFinite(v)) { min = Math.min(min, v); max = Math.max(max, v); }
+      }
+      let lo = p.yMin ?? (Number.isFinite(min) ? min : 0), hi = p.yMax ?? (Number.isFinite(max) ? max : 1);
       if (p.zero) { lo = Math.min(lo, 0); hi = Math.max(hi, 0); }
       if (p.yMin == null || p.yMax == null) { const pad = (hi - lo) * 0.08 || 1; if (p.yMin == null) lo -= pad; if (p.yMax == null) hi += pad; }
       const Y = (v) => y0 + (hi - v) / (hi - lo) * p.h;
@@ -77,7 +83,7 @@ export class PanelChart {
           const [lo2, hi2] = s.band; let seg = [];
           const flush = () => { if (seg.length > 1) { ctx.beginPath(); seg.forEach(([px, a], k) => k ? ctx.lineTo(px, Y(a)) : ctx.moveTo(px, Y(a))); for (let k = seg.length - 1; k >= 0; k--) ctx.lineTo(seg[k][0], Y(seg[k][2])); ctx.closePath(); ctx.fillStyle = rgba(s.color, s.bandAlpha ?? 0.2); ctx.fill(); } seg = []; };
           for (let i = 0; i < x.length; i++) {
-            if (!Number.isFinite(lo2[i]) || !Number.isFinite(hi2[i]) || (i > 0 && x[i] - x[i - 1] > bg)) { flush(); if (!Number.isFinite(lo2[i]) || !Number.isFinite(hi2[i])) continue; }
+            if (!Number.isFinite(lo2[i]) || !Number.isFinite(hi2[i]) || broken(i)) { flush(); if (!Number.isFinite(lo2[i]) || !Number.isFinite(hi2[i])) continue; }
             seg.push([this.xpx(x[i]), hi2[i], lo2[i]]);
           }
           flush();
@@ -85,7 +91,7 @@ export class PanelChart {
         }
         if (s.fillSign) {
           for (let i = 1; i < x.length; i++) {
-            if (!Number.isFinite(y[i]) || !Number.isFinite(y[i - 1]) || x[i] - x[i - 1] > bg) continue;
+            if (!Number.isFinite(y[i]) || !Number.isFinite(y[i - 1]) || broken(i)) continue;
             const v = (y[i] + y[i - 1]) / 2; const xa = this.xpx(x[i - 1]), xb = this.xpx(x[i]);
             ctx.fillStyle = rgba(v >= 0 ? s.fillSign.pos : s.fillSign.neg, 0.5);
             ctx.fillRect(xa, Math.min(Y(0), Y(v)), xb - xa + 0.6, Math.abs(Y(v) - Y(0)));
@@ -95,7 +101,7 @@ export class PanelChart {
         if (s.area) {
           ctx.beginPath(); let open = false, startX = 0, lastX = 0;
           for (let i = 0; i < x.length; i++) {
-            const brk = !Number.isFinite(y[i]) || (i > 0 && x[i] - x[i - 1] > bg);
+            const brk = !Number.isFinite(y[i]) || broken(i);
             if (brk && open) { ctx.lineTo(lastX, Y(lo)); ctx.lineTo(startX, Y(lo)); ctx.closePath(); open = false; }
             if (!Number.isFinite(y[i])) continue;
             const px = this.xpx(x[i]);
@@ -108,7 +114,7 @@ export class PanelChart {
         if (!s.y) continue;
         ctx.beginPath(); let pen = false;
         for (let i = 0; i < x.length; i++) {
-          if (!Number.isFinite(y[i]) || (i > 0 && x[i] - x[i - 1] > bg)) { pen = false; if (!Number.isFinite(y[i])) continue; }
+          if (!Number.isFinite(y[i]) || broken(i)) { pen = false; if (!Number.isFinite(y[i])) continue; }
           const px = this.xpx(x[i]), py = Y(y[i]);
           if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
         }
@@ -121,7 +127,7 @@ export class PanelChart {
     // x axis
     ctx.fillStyle = muted; ctx.font = `500 10.5px ${font}`; ctx.textAlign = 'center';
     const st = niceStep(o.xMax, (w - 80) / 70);
-    for (let v = 0; v <= o.xMax + 1e-9; v += st) ctx.fillText(+v.toFixed(2) + (v + st > o.xMax ? ' km' : ''), this.xpx(v), this.height - 7);
+    for (let v = 0; v <= o.xMax + 1e-9; v += st) ctx.fillText(o.xTick ? o.xTick(v) : +v.toFixed(2) + (v + st > o.xMax ? ' km' : ''), this.xpx(v), this.height - 7);
     if (this.cursor != null) { const px = this.xpx(x[this.cursor]); ctx.strokeStyle = rgba(ink, 0.55); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px, top0 - 4); ctx.lineTo(px, bottom); ctx.stroke(); }
   }
 }
