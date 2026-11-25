@@ -1,6 +1,6 @@
 # 騎乘分析 2.0
 
-**[開啟騎乘分析](https://evantilu.github.io/bike-visualization-and-analyses/?v=2.0.6)** · **[下載示範 FIT](https://evantilu.github.io/bike-visualization-and-analyses/docs/demo/sample-ride.fit)**
+**[開啟騎乘分析](https://evantilu.github.io/bike-visualization-and-analyses/?v=2.0.7)** · **[下載示範 FIT](https://evantilu.github.io/bike-visualization-and-analyses/docs/demo/sample-ride.fit)**
 
 匯入碼錶的 **FIT** 或 Strava 的 **GPX**，在同一畫面對照路線、速度、功率和心率。可以查看單趟的 Lap，也可以把兩趟騎乘沿同一路線對齊，找出在哪裡拉開差距。活動檔在瀏覽器內分析，無需登入。
 
@@ -39,7 +39,7 @@
 | 移動小視窗 | 拖曳「局部放大」標題，或聚焦標題後按方向鍵 |
 | 改變視窗大小 | 拖曳右下角的斜紋手把 |
 | 放大或縮小地圖內容 | 游標放在小圖上，向上滾動放大，向下滾動縮小 |
-| 讓網站自動選位置 | 按「自動」。小圖會找避開路線的位置，空間不足時停靠在主地圖下方 |
+| 讓網站自動選位置 | 按「自動」。小圖會優先避開路線。可用空間不足時允許遮住部分路線，小圖會留在主地圖內 |
 
 示範畫面使用上方提供的合成 FIT。
 

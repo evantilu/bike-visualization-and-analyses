@@ -1,11 +1,11 @@
 // Single-ride map, segment selector and synchronized raw-sample charts.
-import { mountMapInset } from './map-inset.js?v=2.0.6';
-import { PanelChart } from './charts.js?v=2.0.6';
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.6';
-import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.6';
-import { interp, lastLE } from './util.js?v=2.0.6';
-import { inWindows } from './ride.js?v=2.0.6';
-import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.6';
+import { mountMapInset } from './map-inset.js?v=2.0.7';
+import { PanelChart } from './charts.js?v=2.0.7';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.7';
+import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.7';
+import { interp, lastLE } from './util.js?v=2.0.7';
+import { inWindows } from './ride.js?v=2.0.7';
+import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.7';
 
 const LAP_COLORS = ['#086b91', '#ad451c', '#7750a4', '#127153', '#a22f68', '#786017', '#3c59ae', '#495f63'];
 const rounded = (v, unit, digits = 0) => Number.isFinite(v) ? `${v.toFixed(digits)} ${unit}` : '—';

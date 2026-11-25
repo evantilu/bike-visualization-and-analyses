@@ -1,5 +1,5 @@
 // Decode FIT locally. Keep all timestamped records, including samples without GPS.
-import FitParser from './vendor/fit-file-parser.js?v=2.0.6';
+import FitParser from './vendor/fit-file-parser.js?v=2.0.7';
 
 const timestamp = (value) => value instanceof Date ? value.getTime() : NaN;
 const speed = (value) => Number.isFinite(value) ? value * 3.6 : undefined;

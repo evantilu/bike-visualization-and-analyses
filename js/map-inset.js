@@ -1,4 +1,4 @@
-// Keep the detail map clear of the overview route until the rider moves it manually.
+// Prefer a clear spot for the detail map and always keep it inside the overview.
 function hitsBox(a, b, { x, y, width, height }) {
   let first = 0, last = 1;
   for (const [start, end, low, high] of [[a.x, b.x, x, x + width], [a.y, b.y, y, y + height]]) {
@@ -37,22 +37,21 @@ export function chooseInset(bounds, width, height, paths, preferred) {
 }
 
 export function mountMapInset({ map, overview, pane, handle, resizeHandle, autoButton, paths }) {
-  let manual = null, position = null, choice = null, drag = null, frame = null, size = null;
+  let manual = null, position = null, choice = null, drag = null, frame = null;
 
   function limits() {
     const left = 10, top = 10;
-    const right = overview.clientWidth - pane.offsetWidth - 10;
-    const bottom = overview.clientHeight - pane.offsetHeight - 22; // keep attribution readable
-    return right >= left && bottom >= top ? { left, right, top, bottom } : null;
+    return {
+      left, top,
+      right: Math.max(left, overview.clientWidth - pane.offsetWidth - 10),
+      bottom: Math.max(top, overview.clientHeight - pane.offsetHeight - 22),
+    };
   }
 
   function move(point) {
     position = point;
-    pane.classList.toggle('is-floating', point != null);
-    if (point) {
-      pane.style.left = point.x + 'px';
-      pane.style.top = point.y + 'px';
-    }
+    pane.style.left = point.x + 'px';
+    pane.style.top = point.y + 'px';
   }
 
   function keepInside(point, bounds) {
@@ -68,33 +67,21 @@ export function mountMapInset({ map, overview, pane, handle, resizeHandle, autoB
     keepInside(point, bounds);
   }
 
-  function applySize() {
-    if (!size) return;
-    const maxWidth = overview.clientWidth - 20;
-    const maxHeight = overview.clientHeight - 32;
-    const width = Math.max(134, Math.min(maxWidth, size.width));
-    const height = Math.max(106, Math.min(maxHeight, size.height));
-    pane.style.setProperty('--ride-detail-width', width + 'px');
-    pane.style.setProperty('--ride-detail-height', height + 'px');
-  }
-
   function resizeTo(width, height, origin) {
-    size = { width, height };
-    applySize();
+    // CSS caps the requested size against the current overview, including after a viewport resize.
+    pane.style.setProperty('--ride-detail-width', Math.max(134, width) + 'px');
+    pane.style.setProperty('--ride-detail-height', Math.max(106, height) + 'px');
     const bounds = limits();
-    if (origin && bounds) keepInside(origin, bounds);
-    else move(null);
+    setManual(origin ?? { x: bounds.right, y: bounds.top }, bounds);
   }
 
   function place() {
     if (pane.hidden || drag) return;
-    applySize();
     const bounds = limits();
-    if (!bounds) { move(null); return; }
     if (manual) { setManual(manual, bounds); return; }
     const next = chooseInset(bounds, pane.offsetWidth, pane.offsetHeight, paths(), choice);
     choice = next?.key;
-    move(next);
+    keepInside(next ?? position ?? { x: bounds.right, y: bounds.top }, bounds);
   }
 
   function refresh() {
@@ -105,7 +92,7 @@ export function mountMapInset({ map, overview, pane, handle, resizeHandle, autoB
   for (const target of [handle, resizeHandle]) {
     const resizing = target === resizeHandle;
     target.addEventListener('pointerdown', e => {
-      if (e.button !== 0 || drag || (!resizing && !limits())) return;
+      if (e.button !== 0 || drag) return;
       drag = {
         id: e.pointerId, x: e.clientX, y: e.clientY, origin: position,
         width: pane.offsetWidth, height: pane.offsetHeight,
@@ -115,13 +102,12 @@ export function mountMapInset({ map, overview, pane, handle, resizeHandle, autoB
     target.addEventListener('pointermove', e => {
       if (e.pointerId !== drag?.id) return;
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) < 3 && !manual) return;
       if (resizing) {
         resizeTo(drag.width + dx, drag.height + dy, drag.origin);
         return;
       }
-      if (Math.abs(dx) + Math.abs(dy) < 3 && !manual) return;
       const bounds = limits();
-      if (!bounds) return;
       const origin = drag.origin ?? { x: bounds.right, y: bounds.top };
       setManual({ x: origin.x + dx, y: origin.y + dy }, bounds);
     });
@@ -138,7 +124,6 @@ export function mountMapInset({ map, overview, pane, handle, resizeHandle, autoB
         return;
       }
       const bounds = limits();
-      if (!bounds) return;
       const origin = position ?? { x: bounds.right, y: bounds.top };
       setManual({ x: origin.x + step[0], y: origin.y + step[1] }, bounds);
     });
