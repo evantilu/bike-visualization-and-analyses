@@ -1,7 +1,7 @@
 // Rider / bike / per-ride settings for the power estimate, remembered in this browser only.
 // Nothing about the rides themselves is stored — just these few numbers and choices.
-import { POSITIONS, TIRES, TUBES, CHAINS, WINDS } from './power.js?v=2.0.1';
-import { el } from './theme.js?v=2.0.1';
+import { POSITIONS, TIRES, TUBES, CHAINS, WINDS } from './power.js?v=2.0.2';
+import { el } from './theme.js?v=2.0.2';
 
 const KEY = 'bva.settings.v1';
 const blank = () => ({ rider: { massKit: null }, bikes: [], rides: {} });

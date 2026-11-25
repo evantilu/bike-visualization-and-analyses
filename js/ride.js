@@ -1,8 +1,8 @@
 // Single-ride preprocessing: moving clock, speeds, stops, GPS glitches, distance grid,
 // elevation gain and automatic grade segmentation. Pure JS (browser + Node).
-import { median, cumsum, lastLE, movingAvg, clamp } from './util.js?v=2.0.1';
+import { median, cumsum, lastLE, movingAvg, clamp } from './util.js?v=2.0.2';
 
-import { SENSORS, sampleGap, activeSeconds } from './samples.js?v=2.0.1';
+import { SENSORS, sampleGap, activeSeconds } from './samples.js?v=2.0.2';
 
 export const R_EARTH = 6371000;
 export const GRID = 10; // metres between grid samples

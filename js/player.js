@@ -1,7 +1,7 @@
 // Animated replay (one rider) / virtual race (two riders) on real maps.
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, pill, fitTo } from './maps.js?v=2.0.1';
-import { tok, rgba, FONT, fmtTime, speedColor, diffColor, el } from './theme.js?v=2.0.1';
-import { interp } from './util.js?v=2.0.1';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, pill, fitTo } from './maps.js?v=2.0.2';
+import { tok, rgba, FONT, fmtTime, speedColor, diffColor, el } from './theme.js?v=2.0.2';
+import { interp } from './util.js?v=2.0.2';
 
 const STEP = 10;
 

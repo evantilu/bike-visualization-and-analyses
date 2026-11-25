@@ -1,6 +1,6 @@
 // Leaflet base map (OSM + NLSC hillshade) and a canvas overlay that draws routes
 // "keep right" (each direction offset to the right of travel, so out-and-back lanes separate).
-import { tok, rgba, FONT } from './theme.js?v=2.0.1';
+import { tok, rgba, FONT } from './theme.js?v=2.0.2';
 const L = window.L;
 
 export function makeMap(el, { interactive = true } = {}) {

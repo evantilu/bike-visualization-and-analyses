@@ -1,5 +1,5 @@
 // Canvas panel chart (shared x axis, several stacked panels, hover crosshair) and SVG bars.
-import { tok, rgba, FONT } from './theme.js?v=2.0.1';
+import { tok, rgba, FONT } from './theme.js?v=2.0.2';
 
 function niceStep(range, target) {
   const raw = range / Math.max(target, 1), p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
@@ -8,17 +8,17 @@ function niceStep(range, target) {
 
 export class PanelChart {
   // opts: { x:[km], xMax, panels:[{h,label,yMin,yMax,zero,series:[{y,color,width,dash,area,fillSign,name,fmt}]}],
-  //         shades:[[a,b]], vlines:[km], tops:[{x,text}], breakGap, onHover }
+  //         shades:[[a,b]], vlines:[km], tops:[{x,text}], breakGap, onHover, fitHeight, fixedReading }
   constructor(host, opts) {
     this.host = host; this.o = opts; this.cursor = null;
     this.cv = document.createElement('canvas'); host.appendChild(this.cv);
     this.tip = document.createElement('div'); this.tip.className = 'tip'; this.tip.hidden = true; host.appendChild(this.tip);
-    this.padL = 50; this.padR = 14; this.padT = opts.tops ? 20 : 8; this.padB = 24; this.gap = 14;
+    this.padL = opts.fitHeight ? 68 : 50; this.padR = 14; this.padT = opts.tops ? 20 : 8; this.padB = 24; this.gap = opts.fitHeight ? 9 : 14;
     this.height = this.padT + this.padB + opts.panels.reduce((s, p) => s + p.h, 0) + this.gap * (opts.panels.length - 1);
     this.cv.style.height = this.height + 'px';
     const move = (e) => { const r = this.cv.getBoundingClientRect(); const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left; this.hover(cx); };
     this.cv.addEventListener('mousemove', move); this.cv.addEventListener('click', move); this.cv.addEventListener('touchmove', move, { passive: true });
-    this.cv.addEventListener('mouseleave', () => { this.cursor = null; this.tip.hidden = true; this.draw(); opts.onHover?.(null); });
+    if (!opts.fixedReading) this.cv.addEventListener('mouseleave', () => { this.cursor = null; this.tip.hidden = true; this.draw(); opts.onHover?.(null); });
     this.observer = new ResizeObserver(() => this.draw());
     this.observer.observe(host);
   }
@@ -30,6 +30,7 @@ export class PanelChart {
     const i = Math.abs(x[hi] - v) < Math.abs(x[lo] - v) ? hi : lo;
     if (Math.abs(x[i] - v) > (this.o.breakGap ?? 0.05)) { this.cursor = null; this.tip.hidden = true; this.draw(); this.o.onHover?.(null); return; }
     this.cursor = i; this.draw(); this.o.onHover?.(x[i], i);
+    if (this.o.fixedReading) return;
     const rows = [`<b>${this.o.xFormat ? this.o.xFormat(x[i]) : x[i].toFixed(2) + ' km'}</b>`];
     for (const p of this.o.panels) for (const s of p.series) if (s.name && s.y) { const val = s.y[i]; if (Number.isFinite(val)) rows.push(`<i style="background:${s.color}"></i>${s.name}：${s.fmt ? s.fmt(val) : val.toFixed(1)}`); }
     if (this.o.tipExtra) { const t = this.o.tipExtra(i); if (t) rows.push(t); }
@@ -45,6 +46,12 @@ export class PanelChart {
   draw() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = this.host.clientWidth; if (!w) return; this.w = w;
+    const panels = this.o.panels;
+    const padding = this.padT + this.padB + this.gap * Math.max(0, panels.length - 1);
+    const base = panels.reduce((sum, panel) => sum + panel.h, 0);
+    const available = this.o.fitHeight ? Math.max(panels.length, this.host.clientHeight - padding) : base;
+    this.height = padding + available;
+    if (this.o.fitHeight) this.cv.style.height = this.height + 'px';
     this.cv.width = Math.round(w * dpr); this.cv.height = Math.round(this.height * dpr);
     const ctx = this.cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, this.height);
@@ -58,7 +65,8 @@ export class PanelChart {
     ctx.font = `600 11px ${font}`; ctx.textAlign = 'center'; ctx.fillStyle = muted;
     for (const t of o.tops || []) ctx.fillText(t.text, this.xpx(t.x), 13);
     let y0 = top0;
-    for (const p of o.panels) {
+    for (const panel of panels) {
+      const p = available === base ? panel : { ...panel, h: available * panel.h / base };
       let min = Infinity, max = -Infinity;
       for (const s of p.series) for (const arr of [s.y, ...(s.band || [])]) if (arr) {
         for (const v of arr) if (Number.isFinite(v)) { min = Math.min(min, v); max = Math.max(max, v); }
@@ -75,7 +83,18 @@ export class PanelChart {
         ctx.fillText((p.tickFmt ? p.tickFmt(v) : +v.toFixed(2)), this.padL - 6, Y(v) + 3.5);
       }
       if (p.zero) { ctx.strokeStyle = rgba(ink, 0.6); ctx.beginPath(); ctx.moveTo(this.padL, Y(0)); ctx.lineTo(w - this.padR, Y(0)); ctx.stroke(); }
-      ctx.save(); ctx.translate(12, y0 + p.h / 2); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'center'; ctx.fillStyle = muted; ctx.font = `500 11px ${font}`; ctx.fillText(p.label || '', 0, 0); ctx.restore();
+      ctx.save();
+      const center = y0 + p.h / 2;
+      ctx.textAlign = 'center'; ctx.fillStyle = muted; ctx.font = `500 11px ${font}`;
+      if (o.fitHeight) {
+        const [name, unit] = (p.label || '').split(' ');
+        ctx.fillText(name, 20, center - 2);
+        if (unit) ctx.fillText(unit, 20, center + 10);
+      } else {
+        ctx.translate(12, center); ctx.rotate(-Math.PI / 2);
+        ctx.fillText(p.label || '', 0, 0);
+      }
+      ctx.restore();
       ctx.save(); ctx.beginPath(); ctx.rect(this.padL, y0 - 2, w - this.padL - this.padR, p.h + 4); ctx.clip();
       for (const s of p.series) {
         const y = s.y;

@@ -1,10 +1,10 @@
 // Single-ride map, segment selector and synchronized raw-sample charts.
-import { PanelChart } from './charts.js?v=2.0.1';
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.1';
-import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.1';
-import { interp, lastLE } from './util.js?v=2.0.1';
-import { inWindows } from './ride.js?v=2.0.1';
-import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.1';
+import { PanelChart } from './charts.js?v=2.0.2';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.2';
+import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.2';
+import { interp, lastLE } from './util.js?v=2.0.2';
+import { inWindows } from './ride.js?v=2.0.2';
+import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.2';
 
 const LAP_COLORS = ['#086b91', '#ad451c', '#7750a4', '#127153', '#a22f68', '#786017', '#3c59ae', '#495f63'];
 const rounded = (v, unit, digits = 0) => Number.isFinite(v) ? `${v.toFixed(digits)} ${unit}` : '—';
@@ -70,12 +70,38 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   const legend = el('div', { class: 'legend' });
   const axisBar = el('div', { class: 'ride-controls', role: 'group', 'aria-label': '圖表橫軸' });
   const metricBar = el('div', { class: 'ride-metrics', 'aria-live': 'polite' });
-  const chartEl = el('div', { class: 'chart' });
+  const chartEl = el('div', { class: 'chart ride-plot' });
+  const hasTemperature = !!samples.sensors.temp;
+  const temperature = el('input', { type: 'checkbox' });
+  temperature.checked = hasTemperature && window.matchMedia('(min-width: 900px) and (min-height: 840px)').matches;
   const range = el('input', { type: 'range', step: '1', 'aria-label': '查看曲線與地圖位置' });
-  const reading = el('div', { class: 'ride-reading', 'aria-live': 'off' });
+  const reading = el('div', { class: 'ride-reading', 'aria-label': '游標讀值' });
+  const channels = [
+    ['時間', i => fmtTime(samples.t[i])],
+    ['距離', i => rounded(distance[i] / 1000, 'km', 2)],
+    ['速度', i => rounded(speed[i], 'km/h', 1)],
+    ...sensorKeys.filter(key => samples.sensors[key]).map(key =>
+      [SENSORS[key].name, i => rounded(samples.sensors[key][i], SENSORS[key].unit)]),
+    ...(altitude.some(Number.isFinite) ? [['海拔', i => rounded(altitude[i], 'm')]] : []),
+    ...(hasTemperature ? [['溫度', i => rounded(samples.sensors.temp[i], '°C')]] : []),
+  ];
+  const values = channels.map(([label]) => {
+    const value = el('strong', {}, '—');
+    reading.append(el('div', {}, el('span', {}, label), value));
+    return value;
+  });
   const table = el('div', { class: 'tablewrap' });
-  sec.append(modeBar, lapBar, mapEl, legend, metricBar, axisBar, chartEl,
-    el('div', { class: 'ride-scrubber noprint' }, range, reading), table);
+  sec.append(
+    el('div', { class: 'ride-toolbar noprint' }, modeBar, axisBar,
+      hasTemperature ? el('label', { class: 'chk ride-temperature' }, temperature, '溫度曲線') : null),
+    lapBar, metricBar,
+    el('div', { class: 'ride-stage' },
+      el('div', { class: 'ride-map-pane' }, mapEl,
+        el('div', { class: 'ride-map-meta' }, legend,
+          el('button', { class: 'btn noprint', onclick: fitSelected }, '重設地圖'))),
+      el('div', { class: 'ride-chart-pane' }, chartEl,
+        el('div', { class: 'ride-scrubber noprint' }, range), reading)),
+    table);
   host.append(sec);
 
   const map = makeMap(mapEl);
@@ -151,19 +177,16 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
 
   function showSample(i) {
     cursor = i == null ? null : samples.t[i];
-    reading.textContent = i == null ? '' : [
-      fmtTime(cursor), rounded(distance[i] / 1000, 'km', 2), rounded(speed[i], 'km/h', 1),
-      ...sensorKeys.filter(key => samples.sensors[key]).map(key =>
-        `${SENSORS[key].name} ${rounded(samples.sensors[key][i], SENSORS[key].unit)}`),
-    ].join('　');
+    const readings = channels.map(([label, get]) => i == null ? '—' : get(i));
+    values.forEach((value, j) => { value.textContent = readings[j]; });
     if (i != null) {
       range.value = i;
-      range.setAttribute('aria-valuetext', reading.textContent);
+      range.setAttribute('aria-valuetext', channels.map(([label], j) => `${label} ${readings[j]}`).join('，'));
     }
     overlay.redraw();
   }
 
-  function drawChart() {
+  function drawChart(sample = null) {
     chart?.destroy();
     showSample(null);
     const a = Math.max(0, lastLE(samples.t, selected.a - 0.0001) + 1);
@@ -193,7 +216,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
       ['speed', speed, '速度', 'km/h', 'blue'],
       ['cad', samples.sensors.cad, '踏頻', 'rpm', 'down'],
       ['altitude', altitude, '海拔', 'm', 'muted'],
-      ['temp', samples.sensors.temp, '溫度', '°C', 'muted'],
+      ['temp', temperature.checked ? samples.sensors.temp : null, '溫度', '°C', 'fair'],
     ];
     const panels = series.flatMap(([key, data, name, unit, color]) => {
       const y = data?.subarray(a, b);
@@ -206,13 +229,17 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     const xAt = (t) => isTime ? t - xStart : interp(t, samples.t, distance) / 1000 - xStart;
     const boundaries = selected === whole ? parts() : [];
     chart = new PanelChart(chartEl, {
-      x, xMax, panels, breaks, breakGap: Math.max(isTime ? samples.maxGap : 0.05, xMax / 40),
+      x, xMax, panels, breaks, fitHeight: true, fixedReading: true, breakGap: Math.max(isTime ? samples.maxGap : 0.05, xMax / 40),
       xFormat: v => isTime ? fmtTime(v + xStart) : rounded(v + xStart, 'km', 2),
       xTick: isTime ? fmtTime : v => rounded(v + xStart, 'km', 2),
       vlines: boundaries.slice(1).map(p => xAt(p.a)).filter(v => v > 0 && v < xMax),
       tops: boundaries.map(p => ({ x: xAt((p.a + p.b) / 2), text: p.mark ?? p.name })),
       onHover: (_, i) => showSample(i == null ? null : a + i),
     });
+    if (sample != null && sample >= a && sample < b) {
+      chart.cursor = sample - a;
+      showSample(sample);
+    }
     chart.draw();
   }
 
@@ -228,8 +255,10 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   function drawSelectors() {
     modeBar.replaceChildren(...(laps.length > 1 ? [selector('碼錶 Lap', mode === 'lap', () => changeMode('lap'))] : []),
       selector('地形分段', mode === 'terrain', () => changeMode('terrain')));
+    const scrollLeft = lapBar.scrollLeft;
     lapBar.replaceChildren(...[whole, ...parts()].map(part =>
       selector(part.name, selected === part, () => select(part), part.color)));
+    lapBar.scrollLeft = scrollLeft;
     axisBar.replaceChildren(selector('時間軸', axis === 'time', () => changeAxis('time')),
       selector('距離軸', axis === 'distance', () => changeAxis('distance')));
   }
@@ -238,7 +267,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     if (next === axis) return;
     axis = next;
     [...axisBar.children].forEach((button, i) => button.setAttribute('aria-pressed', String(i === (axis === 'time' ? 0 : 1))));
-    drawChart();
+    drawChart(cursor == null ? null : +range.value);
   }
 
   function select(part, scroll = false) {
@@ -257,16 +286,24 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
         el('span', {}, hasDeviceSpeed ? '▲ 有定位的最高速　灰色＝缺速度' : '▲ 最高速　灰色＝GPS 飄移')] : []),
       el('span', {}, '● 起點　■ 停車'),
       !visible.length ? el('span', {}, '這段沒有 GPS 定位') : null);
-    if (visible.length) {
-      const from = visible[0][0], to = visible.at(-1)[1];
-      fitTo(map, ride.lat.subarray(from, to), ride.lon.subarray(from, to));
-    } else if (!map.getZoom()) {
-      fitTo(map, ride.lat, ride.lon);
-    }
+    fitSelected();
     drawChart();
     drawTable();
     if (scroll) sec.scrollIntoView({ block: 'start' });
   }
+
+  function fitSelected() {
+    if (visible.length) {
+      const from = visible[0][0], to = visible.at(-1)[1];
+      fitTo(map, ride.lat.subarray(from, to), ride.lon.subarray(from, to));
+    } else {
+      fitTo(map, ride.lat, ride.lon);
+    }
+  }
+
+  const mapObserver = new ResizeObserver(fitSelected);
+  mapObserver.observe(mapEl);
+  temperature.addEventListener('change', () => drawChart(cursor == null ? null : +range.value));
 
   range.addEventListener('input', () => {
     const i = +range.value;
@@ -278,6 +315,6 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   select(whole);
   return {
     selectTerrain: (i) => { mode = 'terrain'; select(hills[i], true); },
-    destroy: () => { chart?.destroy(); map.remove(); },
+    destroy: () => { mapObserver.disconnect(); chart?.destroy(); map.remove(); },
   };
 }
