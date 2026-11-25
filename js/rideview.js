@@ -1,10 +1,10 @@
 // Single-ride map, segment selector and synchronized raw-sample charts.
-import { PanelChart } from './charts.js';
-import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js';
-import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js';
-import { interp, lastLE } from './util.js';
-import { inWindows } from './ride.js';
-import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js';
+import { PanelChart } from './charts.js?v=2.0.1';
+import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.1';
+import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.1';
+import { interp, lastLE } from './util.js?v=2.0.1';
+import { inWindows } from './ride.js?v=2.0.1';
+import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.1';
 
 const LAP_COLORS = ['#086b91', '#ad451c', '#7750a4', '#127153', '#a22f68', '#786017', '#3c59ae', '#495f63'];
 const rounded = (v, unit, digits = 0) => Number.isFinite(v) ? `${v.toFixed(digits)} ${unit}` : '—';

@@ -1,6 +1,6 @@
 # 騎乘分析 2.0（bike-visualization-and-analyses）
 
-**打開網頁：https://evantilu.github.io/bike-visualization-and-analyses/**
+**[打開騎乘分析 2.0.1](https://evantilu.github.io/bike-visualization-and-analyses/?v=2.0.1)**
 
 選擇碼錶匯出的 **FIT**，或 Strava 匯出的 **GPX**。可以混合匯入：
 
@@ -259,7 +259,7 @@
 
 ## 開發
 
-純靜態網頁，沒有建置步驟：
+純靜態網頁，沒有建置步驟。發布時同步更新 README 入口、HTML 資源和 JavaScript 匯入網址的版本參數，避免瀏覽器混用舊檔。
 
 ```
 npm run serve     # http://localhost:8000

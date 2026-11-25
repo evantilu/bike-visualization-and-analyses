@@ -1,8 +1,8 @@
 // Two-ride comparison: align ride O onto reference ride R, find the comparable stretches,
 // time both riders through 10 m gates, and build virtual-race timelines.
-import { makeProjection, firstCrossing, GRID, segmentProfile, inWindows, mergeWindows, GRADE_BINS } from './ride.js';
-import { interp, lastLE } from './util.js';
-import { sensorAt } from './samples.js';
+import { makeProjection, firstCrossing, GRID, segmentProfile, inWindows, mergeWindows, GRADE_BINS } from './ride.js?v=2.0.1';
+import { interp, lastLE } from './util.js?v=2.0.1';
+import { sensorAt } from './samples.js?v=2.0.1';
 
 const MATCH_R = 25;       // m: a point closer than this to the other track is "on route"
 const START_MARGIN = 200; // m skipped after a standing start
