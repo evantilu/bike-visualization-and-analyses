@@ -40,6 +40,46 @@ export function activeSeconds(intervals, a, b) {
   return seconds;
 }
 
+// Integrate into one-second bins, then use only uninterrupted 30-second windows.
+export function normalizedPower(samples, start, end) {
+  const { t, maxGap, timerIntervals, sensors: { power } } = samples;
+  const windowSize = 30;
+  if (!power || end - start < windowSize) return undefined;
+  let fourthPower = 0, windows = 0;
+  const ring = new Float64Array(windowSize);
+  for (const [from, to] of timerIntervals ?? [[start, end]]) {
+    const a = Math.max(start, from), b = Math.min(end, to);
+    if (b - a < windowSize) continue;
+    let fraction = 0, energy = 0, count = 0, rolling = 0;
+    const first = Math.max(0, lastLE(t, a));
+    for (let i = first; i + 1 < t.length && t[i] < b; i++) {
+      let seconds = Math.min(t[i + 1], b) - Math.max(t[i], a);
+      if (seconds <= 0) continue;
+      if (!Number.isFinite(power[i]) || t[i + 1] - t[i] > maxGap) {
+        fraction = energy = count = rolling = 0;
+        continue;
+      }
+      while (seconds > 1e-9) {
+        const step = Math.min(1 - fraction, seconds);
+        fraction += step;
+        energy += power[i] * step;
+        seconds -= step;
+        if (fraction < 1 - 1e-9) continue;
+        const slot = count % windowSize;
+        if (count >= windowSize) rolling -= ring[slot];
+        ring[slot] = energy;
+        rolling += energy;
+        if (++count >= windowSize) {
+          fourthPower += (rolling / windowSize) ** 4;
+          windows++;
+        }
+        fraction = energy = 0;
+      }
+    }
+  }
+  return windows ? (fourthPower / windows) ** 0.25 : undefined;
+}
+
 export function hasSensor(ride, key) {
   return !!ride.samples.sensors[key] || Number.isFinite(ride.session?.[key]) || ride.laps.some(l => Number.isFinite(l[key]));
 }

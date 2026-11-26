@@ -10,7 +10,7 @@ function summary(m) {
     elapsed: m.total_elapsed_time, timer: m.total_timer_time, distance: m.total_distance,
     speed: speed(m.enhanced_avg_speed ?? m.avg_speed),
     maxSpeed: speed(m.enhanced_max_speed ?? m.max_speed), ascent: m.total_ascent,
-    power: m.avg_power, hr: m.avg_heart_rate, cad: m.avg_cadence,
+    power: m.avg_power, normalizedPower: m.normalized_power, hr: m.avg_heart_rate, cad: m.avg_cadence,
   };
 }
 

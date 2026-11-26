@@ -2,7 +2,7 @@
 import { parseGPX } from './gpx.js?v=2.0.7';
 import { prepareRide } from './ride.js?v=2.0.7';
 import { compareRides } from './compare.js?v=2.0.7';
-import { buildSingle } from './single.js?v=2.0.7';
+import { buildSingle } from './single.js?v=2.0.10';
 import { buildCompare } from './comparison.js?v=2.0.7';
 import { fmtTime, fmtDate, el } from './theme.js?v=2.0.7';
 import { interp } from './util.js?v=2.0.7';
@@ -120,7 +120,7 @@ function historyFile(input) {
 
 async function readRideSource(file) {
   if (/\.fit$/i.test(file.name)) {
-    const { parseFIT } = await import('./fit.js?v=2.0.7');
+    const { parseFIT } = await import('./fit.js?v=2.0.10');
     return parseFIT(await file.arrayBuffer());
   }
   if (/\.gpx$/i.test(file.name)) return parseGPX(await file.text());
@@ -191,7 +191,7 @@ function renderList() {
     cb.checked = r.checked;
     const tr = el('tr', { class: r.checked ? 'sel' : '' }, el('td', {}, cb), el('td', {}, fmtDate(r.ride.start)), el('td', {}, r.ride.name),
       el('td', { class: 'n' }, ((summary?.distance ?? r.ride.total) / 1000).toFixed(2) + ' km'), el('td', { class: 'n' }, fmtTime(summary?.timer ?? r.ride.moving)),
-      el('td', { class: 'n' }, (summary?.speed ?? r.ride.avg).toFixed(1) + ' km/h'), el('td', { class: 'n' }, Math.round(r.ride.gain) + ' m'), el('td', {}, r.ride.fileName));
+      el('td', { class: 'n' }, (summary?.speed ?? r.ride.avg).toFixed(1) + ' km/h'), el('td', { class: 'n' }, Math.round(summary?.ascent ?? r.ride.gain) + ' m'), el('td', {}, r.ride.fileName));
     const toggle = () => {
       const sel = rides.filter(x => x.checked);
       if (!r.checked && sel.length >= 2) sel[0].checked = false; // keep at most two

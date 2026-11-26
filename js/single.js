@@ -5,7 +5,7 @@ import { mountPlayer } from './player.js?v=2.0.7';
 import { tok, el, fmtTime, fmtDate, speedColor } from './theme.js?v=2.0.7';
 import { inWindows } from './ride.js?v=2.0.7';
 import { buildPowerSection } from './powerview.js?v=2.0.7';
-import { buildRideExplorer } from './rideview.js?v=2.0.7';
+import { buildRideExplorer } from './rideview.js?v=2.0.10';
 import { hasSensor } from './samples.js?v=2.0.7';
 
 const clsColor = (c) => c.key.includes('up') ? tok('up') : c.key.includes('down') ? tok('down') : tok('flat');

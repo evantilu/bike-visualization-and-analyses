@@ -3,7 +3,7 @@ import { parseFIT } from '../js/fit.js';
 import { parseGPX } from '../js/gpx.js';
 import { prepareRide } from '../js/ride.js';
 import { compareRides } from '../js/compare.js';
-import { sensorMeans } from '../js/samples.js';
+import { sensorMeans, normalizedPower } from '../js/samples.js';
 
 await assert.rejects(() => parseFIT(new Uint8Array([0, 1, 2])), /無法解析 FIT/);
 
@@ -28,6 +28,12 @@ assert.equal(fit.moving, 395);
 
 const early = sensorMeans(fit.samples, 98, 102);
 assert.equal(early.power, 25); // 3 seconds at 0 W, 0.5 valid second at 175 W, 0.5 second missing
+assert.equal(normalizedPower(fit.samples, 0, 100), 0);
+assert.equal(normalizedPower(fit.samples, 200, 400), 200);
+assert.equal(normalizedPower(fit.samples, 230, 275), undefined); // neither side of the pause has 30 s
+assert.equal(normalizedPower(fit.samples, 90, 120), undefined); // missing power breaks the window
+const variable = normalizedPower(fit.samples, 0, 400);
+assert.ok(variable > sensorMeans(fit.samples, 0, 400).power && variable < 200);
 const gpx = prepareRide(parseGPX('<gpx><trk><trkseg>' + points.map(p =>
   `<trkpt lat="${p.lat}" lon="${p.lon}"><ele>${p.ele}</ele><time>${new Date(p.t - 86400_000).toISOString()}</time></trkpt>`
 ).join('') + '</trkseg></trk></gpx>'));

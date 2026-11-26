@@ -2,9 +2,9 @@
 import { mountMapInset } from './map-inset.js?v=2.0.7';
 import { PanelChart } from './charts.js?v=2.0.7';
 import { makeMap, canvasOverlay, laneScreen, drawLane, kmMarkers, dot, badge, fitTo } from './maps.js?v=2.0.7';
-import { SENSORS, activeSeconds, sensorMeans, hasSensor } from './samples.js?v=2.0.7';
+import { SENSORS, activeSeconds, sensorMeans, hasSensor, normalizedPower } from './samples.js?v=2.0.10';
 import { interp, lastLE } from './util.js?v=2.0.7';
-import { inWindows } from './ride.js?v=2.0.7';
+import { elevationGain, inWindows } from './ride.js?v=2.0.7';
 import { el, fmtTime, tok, speedColor, SPEED_RAMP_STOPS } from './theme.js?v=2.0.7';
 
 const LAP_COLORS = ['#086b91', '#ad451c', '#7750a4', '#127153', '#a22f68', '#786017', '#3c59ae', '#495f63'];
@@ -41,6 +41,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   const speed = Float64Array.from(samples.records, (p, i) =>
     hasDeviceSpeed ? p.speed : interp(samples.t[i], trackTime, ride.v));
   const altitude = Float64Array.from(samples.records, p => p.ele);
+  const hasAltitude = altitude.some(Number.isFinite);
   // Use the device distance stream only if it provides a complete, monotonic axis.
   const hasDeviceDistance = samples.records.every((p, i, arr) =>
     Number.isFinite(p.distance) && (!i || p.distance >= arr[i - 1].distance));
@@ -57,12 +58,48 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   const intervals = samples.timerIntervals;
   const active = intervals ? (a, b) => activeSeconds(intervals, a, b) : null;
   const sensorKeys = Object.keys(SENSORS).filter(key => key !== 'temp' && hasSensor(ride, key));
+  const showNP = sensorKeys.includes('power') || [whole, ...laps].some(part =>
+    Number.isFinite(part.device?.normalizedPower));
+  const segmentMetrics = new Map();
   const readSegment = (part) => {
+    if (segmentMetrics.has(part)) return segmentMetrics.get(part);
     const measured = sensorMeans(samples, part.a, part.b, active);
-    const length = part.distance ?? interp(part.b, trackTime, ride.d) - interp(part.a, trackTime, ride.d);
-    const timer = part.timer ?? (active ? active(part.a, part.b) : part.b - part.a);
-    return [rounded(length / 1000, 'km', 2), fmtTime(timer), fmtTime(part.b - part.a),
-      ...sensorKeys.map(key => rounded(part.device?.[key] ?? measured[key], SENSORS[key].unit))];
+    const routeStart = interp(part.a, trackTime, ride.d);
+    const routeEnd = interp(part.b, trackTime, ride.d);
+    const length = part.distance ?? routeEnd - routeStart;
+    const timer = part.timer ?? (active ? active(part.a, part.b)
+      : interp(part.b, trackTime, ride.mt) - interp(part.a, trackTime, ride.mt));
+    const avgSpeed = part.device?.speed ?? (timer > 0 ? length / timer * 3.6 : undefined);
+    let grade, ascent = part.device?.ascent;
+    if (hasAltitude && routeEnd > routeStart) {
+      const from = interp(routeStart, G.d, G.eleC), to = interp(routeEnd, G.d, G.eleC);
+      grade = (to - from) / (routeEnd - routeStart) * 100;
+      if (ascent == null) {
+        if (part === whole) {
+          ascent = ride.gain;
+        } else {
+          const middle = G.eleC.subarray(lastLE(G.d, routeStart) + 1, lastLE(G.d, routeEnd) + 1);
+          const profile = new Float64Array(middle.length + 2);
+          profile[0] = from;
+          profile.set(middle, 1);
+          profile[profile.length - 1] = to;
+          ascent = elevationGain(profile, 0.5);
+        }
+      }
+    }
+    const np = showNP ? part.device?.normalizedPower ?? normalizedPower(samples, part.a, part.b) : undefined;
+    const powers = showNP ? [rounded(np, 'W')] : [];
+    const values = [
+      rounded(length / 1000, 'km', 2), fmtTime(timer), fmtTime(part.b - part.a),
+      rounded(avgSpeed, 'km/h', 1), Number.isFinite(grade) ? `${grade > 0 ? '+' : ''}${grade.toFixed(1)}%` : '—',
+      rounded(ascent, 'm'),
+      ...sensorKeys.filter(key => key === 'power').map(key => rounded(part.device?.[key] ?? measured[key], 'W')),
+      ...powers,
+      ...sensorKeys.filter(key => key !== 'power').map(key => rounded(part.device?.[key] ?? measured[key], SENSORS[key].unit)),
+    ];
+    const metrics = { values, shortNP: Number.isFinite(np) && timer < 600 };
+    segmentMetrics.set(part, metrics);
+    return metrics;
   };
   const sec = el('section', { class: 'rsec ride-explorer' }, el('h2', {}, '路線與騎乘曲線'));
   const modeBar = el('div', { class: 'ride-controls', role: 'group', 'aria-label': '分段方式' });
@@ -97,7 +134,7 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     ['速度', i => rounded(speed[i], 'km/h', 1)],
     ...sensorKeys.filter(key => samples.sensors[key]).map(key =>
       [SENSORS[key].name, i => rounded(samples.sensors[key][i], SENSORS[key].unit)]),
-    ...(altitude.some(Number.isFinite) ? [['海拔', i => rounded(altitude[i], 'm')]] : []),
+    ...(hasAltitude ? [['海拔', i => rounded(altitude[i], 'm')]] : []),
     ...(hasTemperature ? [['溫度', i => rounded(samples.sensors.temp[i], '°C')]] : []),
   ];
   const values = channels.map(([label]) => {
@@ -121,11 +158,13 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
   host.append(sec);
 
   const map = makeMap(mapEl);
-  let mode = laps.length > 1 ? 'lap' : 'terrain';
+  let mode = laps.length ? 'lap' : 'terrain';
   let axis = mode === 'lap' ? 'time' : 'distance';
   let selected = whole, cursor = null, chart;
   const parts = () => mode === 'lap' ? laps : hills;
-  const labels = ['距離', '計時', '經過', ...sensorKeys.map(key => `平均${SENSORS[key].name}`)];
+  const labels = ['距離', '計時', '經過', '平均時速', '平均坡度', '累計爬升',
+    ...(sensorKeys.includes('power') ? ['平均功率'] : []), ...(showNP ? ['NP'] : []),
+    ...sensorKeys.filter(key => key !== 'power').map(key => `平均${SENSORS[key].name}`)];
   const selector = (label, pressed, callback, color) => el('button', {
     class: 'btn', 'aria-pressed': String(pressed), onclick: callback,
     style: color ? `--segment-color:${color}` : undefined,
@@ -316,15 +355,20 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
 
   function drawTable() {
     if (mode !== 'lap') { table.replaceChildren(); return; }
+    const body = laps.map(part => {
+      const { values, shortNP } = readSegment(part);
+      return el('tr', { class: part === selected ? 'sel' : '' },
+        el('td', {}, selector(part.name, part === selected, () => select(part, true), part.color)),
+        ...values.map((value, i) => el('td', { class: 'n' },
+          value, labels[i] === 'NP' && shortNP ? '（短段）' : null)));
+    });
     table.replaceChildren(el('table', { class: 'segtable' },
       el('thead', {}, el('tr', {}, el('th', {}, '分段'), ...labels.map(label => el('th', { class: 'n' }, label)))),
-      el('tbody', {}, laps.map(part => el('tr', { class: part === selected ? 'sel' : '' },
-        el('td', {}, selector(part.name, part === selected, () => select(part, true), part.color)),
-        ...readSegment(part).map(v => el('td', { class: 'n' }, v)))))));
+      el('tbody', {}, ...body)));
   }
 
   function drawSelectors() {
-    modeBar.replaceChildren(...(laps.length > 1 ? [selector('碼錶 Lap', mode === 'lap', () => changeMode('lap'))] : []),
+    modeBar.replaceChildren(...(laps.length ? [selector('碼錶 Lap', mode === 'lap', () => changeMode('lap'))] : []),
       selector('地形分段', mode === 'terrain', () => changeMode('terrain')));
     const scrollLeft = lapBar.scrollLeft;
     lapBar.replaceChildren(...[whole, ...parts()].map(part =>
@@ -345,11 +389,17 @@ export function buildRideExplorer(host, ride, terrain, { vlo, vhi, clsColor }) {
     selected = part ?? whole;
     updateTracks();
     drawSelectors();
-    const values = readSegment(selected);
+    const { values, shortNP } = readSegment(selected);
     const timeLabel = Number.isFinite(selected.device?.timer) ? '碼錶計時'
-      : selected === whole || mode === 'terrain' ? '移動時間' : '計時';
+      : selected === whole || mode === 'terrain' || !active ? '移動時間' : '計時';
     metricBar.replaceChildren(el('strong', {}, selected.name),
-      ...values.map((v, i) => el('span', {}, `${i === 1 ? timeLabel : labels[i]} `, el('b', {}, v))));
+      ...values.map((v, i) => {
+        const label = labels[i];
+        if (label === 'NP') return el('span', { title: '標準化功率（Normalized Power）' },
+          shortNP ? 'NP（短段） ' : 'NP ', el('b', {}, v));
+        return el('span', { title: label === '平均坡度' ? '起終點淨高差 ÷ 路線距離' : undefined },
+          `${i === 1 ? timeLabel : label} `, el('b', {}, v));
+      }));
     legend.replaceChildren(
       ...(mode === 'terrain' ? [el('span', {}, rounded(speedLo, 'km/h')),
         el('i', { class: 'ride-speed-ramp', style: `background:linear-gradient(90deg,${SPEED_RAMP_STOPS.join(',')})` }),
