@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="css/app.css?v=2.0.7">
+<link rel="stylesheet" href="css/app.css?v=2.0.8">
 </head>
 <body>
 <div class="wrap">
@@ -24,8 +24,18 @@
     <div class="drop" id="drop">
       <input type="file" id="fileInput" accept=".fit,.gpx,application/gpx+xml" multiple hidden>
       <button class="btn primary" id="pickBtn">選擇 FIT／GPX（可多選）</button>
+      <button class="btn" id="historyBtn" aria-controls="history" aria-expanded="false">從歷史紀錄選擇</button>
       <span>或把檔案拖到這裡</span>
     </div>
+    <section class="history" id="history" aria-label="歷史騎乘" hidden>
+      <p class="note" id="historyStatus" role="status"></p>
+      <fieldset id="historyChoices" hidden>
+        <legend>選擇歷史騎乘（可多選）</legend>
+        <div class="history-options" id="historyOptions"></div>
+      </fieldset>
+      <button class="btn primary" id="historyImport" hidden disabled>匯入所選騎乘</button>
+      <button class="btn" id="historyRetry" hidden>重試載入</button>
+    </section>
     <div class="tablewrap" id="listWrap" hidden>
       <table class="list" id="list">
         <thead><tr><th></th><th>日期</th><th>名稱</th><th class="n">距離</th><th class="n">時間</th><th class="n">均速</th><th class="n">爬升</th><th>檔名</th></tr></thead>
@@ -48,6 +58,6 @@
   </footer>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script type="module" src="js/app.js?v=2.0.7"></script>
+<script type="module" src="js/app.js?v=2.0.8"></script>
 </body>
 </html>

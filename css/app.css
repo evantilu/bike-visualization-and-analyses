@@ -30,6 +30,15 @@ a{color:var(--blue)}
 .picker{padding:14px;display:grid;gap:12px}
 .drop{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1.5px dashed var(--line);border-radius:8px;padding:14px;color:var(--muted)}
 .drop.over{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 8%,transparent)}
+.history{border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.history .note{margin:0}
+.history .note:empty{display:none}
+.history fieldset{margin:0 0 10px;padding:0;min-width:0;border:0}
+.history legend{font-weight:600;margin-bottom:6px}
+.history-options{max-height:16rem;overflow:auto}
+.history-options label{display:flex;align-items:center;gap:8px;padding:5px 0;overflow-wrap:anywhere;cursor:pointer}
+.history-options input{flex:none}
+.history .btn:not([hidden]){margin-top:6px}
 .tablewrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;white-space:nowrap}

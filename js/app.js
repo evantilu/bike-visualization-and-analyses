@@ -13,6 +13,52 @@ let uid = 0;
 let disposeReport;
 
 let pending = Promise.resolve();
+const historyFolder = 'training-history';
+const repository = 'evantilu/bike-visualization-and-analyses';
+let historyBusy = false;
+
+async function listHistory() {
+  const status = $('historyStatus');
+  const choices = $('historyChoices');
+  const options = $('historyOptions');
+  const importButton = $('historyImport');
+  const retry = $('historyRetry');
+  historyBusy = true;
+  retry.hidden = choices.hidden = importButton.hidden = importButton.disabled = true;
+  options.replaceChildren();
+  status.textContent = '正在讀取歷史紀錄…';
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repository}/contents/${historyFolder}?ref=main`, { cache: 'no-cache' });
+    if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
+    const entries = response.ok ? await response.json() : [];
+    const files = entries.filter(entry => entry.type === 'file' && /\.(fit|gpx)$/i.test(entry.name))
+      .sort((a, b) => b.name.localeCompare(a.name, 'zh-Hant', { numeric: true }));
+    options.append(...files.map(({ name, sha }) => el('label', {},
+      el('input', { type: 'checkbox', value: name, 'data-sha': sha }), name)));
+    status.textContent = files.length ? '' : '目前沒有可匯入的 FIT 或 GPX 紀錄。';
+    choices.hidden = importButton.hidden = !files.length;
+  } catch {
+    status.textContent = '暫時無法從 GitHub 讀取歷史紀錄，請稍後重試。';
+    retry.hidden = false;
+  } finally {
+    historyBusy = false;
+  }
+}
+
+function historyFile(input) {
+  const name = input.value;
+  const url = `https://raw.githubusercontent.com/${repository}/main/${historyFolder}/${encodeURIComponent(name)}?v=${encodeURIComponent(input.dataset.sha)}`;
+  async function read() {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`無法從 GitHub 下載（HTTP ${response.status}）`);
+    return response;
+  }
+  return {
+    name,
+    text: async () => (await read()).text(),
+    arrayBuffer: async () => (await read()).arrayBuffer(),
+  };
+}
 
 function sameActivity(a, b) {
   if (Math.abs(a.trackStart - b.trackStart) > 2_000 || Math.abs(a.total - b.total) > Math.max(100, a.total * 0.03)) return false;
@@ -74,6 +120,7 @@ async function importFiles(files) {
   $('importNote').hidden = !notes.length;
   if (errs.length) { $('err').textContent = '有檔案無法讀取：' + errs.join('；'); $('err').hidden = false; }
   renderList();
+  return !errs.length;
 }
 
 function renderList() {
@@ -121,6 +168,29 @@ function run() {
 }
 
 $('pickBtn').onclick = () => $('fileInput').click();
+$('historyBtn').onclick = () => {
+  const panel = $('history');
+  panel.hidden = !panel.hidden;
+  $('historyBtn').setAttribute('aria-expanded', String(!panel.hidden));
+  if (!panel.hidden && !historyBusy) listHistory();
+};
+$('historyRetry').onclick = listHistory;
+const checkedHistory = () => $('historyOptions').querySelectorAll('input:checked');
+$('historyOptions').onchange = () => { $('historyImport').disabled = !checkedHistory().length; };
+$('historyImport').onclick = async () => {
+  const selected = [...checkedHistory()];
+  historyBusy = $('historyChoices').disabled = $('historyImport').disabled = true;
+  $('historyStatus').textContent = `正在匯入 ${selected.length} 趟騎乘…`;
+  try {
+    if (await addFiles(selected.map(historyFile))) {
+      for (const input of selected) input.checked = false;
+    }
+  } finally {
+    $('historyStatus').textContent = '';
+    historyBusy = $('historyChoices').disabled = false;
+    $('historyImport').disabled = !checkedHistory().length;
+  }
+};
 $('fileInput').addEventListener('change', (e) => { addFiles([...e.target.files]); e.target.value = ''; });
 const drop = $('drop');
 for (const ev of ['dragenter', 'dragover']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
