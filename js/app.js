@@ -16,6 +16,63 @@ let pending = Promise.resolve();
 const historyFolder = 'training-history';
 const repository = 'evantilu/bike-visualization-and-analyses';
 let historyBusy = false;
+const historyMetrics = new Map();
+const historyNameOrder = new Intl.Collator('zh-Hant', { numeric: true });
+const checkedHistory = () => $('historyOptions').querySelectorAll('input:checked');
+
+function setHistoryBusy(busy) {
+  historyBusy = $('historyChoices').disabled = busy;
+  $('historyImport').disabled = busy || !checkedHistory().length;
+}
+
+function rideMetrics(ride) {
+  return {
+    start: ride.start,
+    distance: ride.session?.distance ?? ride.total,
+    duration: ride.session?.timer ?? ride.moving,
+  };
+}
+
+async function sortHistory() {
+  const options = $('historyOptions');
+  const status = $('historyStatus');
+  const [key, direction] = $('historySort').value.split('-');
+  const order = direction === 'asc' ? 1 : -1;
+  const rows = [...options.children].map(label => ({ label, input: label.querySelector('input') }));
+  const metrics = row => historyMetrics.get(row.input.dataset.sha);
+  if (key !== 'name') {
+    const missing = rows.filter(row => !metrics(row));
+    if (missing.length) status.textContent = '正在讀取騎乘資料以取得排序資訊…';
+    for (let i = 0; i < missing.length; i += 6) {
+      await Promise.all(missing.slice(i, i + 6).map(async ({ input }) => {
+        const file = historyFile(input);
+        try {
+          const ride = prepareRide(await readRideSource(file));
+          historyMetrics.set(file.historySha, rideMetrics(ride));
+        } catch {
+          // Leave this entry available for import or a later retry.
+        }
+      }));
+    }
+  }
+  rows.sort((a, b) => {
+    const byName = historyNameOrder.compare(a.input.value, b.input.value);
+    if (key === 'name') return order * byName;
+    const first = metrics(a)?.[key], second = metrics(b)?.[key];
+    if (!Number.isFinite(first)) return Number.isFinite(second) ? 1 : byName;
+    if (!Number.isFinite(second)) return -1;
+    return order * (first - second) || byName;
+  });
+  for (const row of rows) {
+    const data = metrics(row);
+    row.label.querySelector('small').textContent = data
+      ? `${fmtDate(data.start)} · ${(data.distance / 1000).toFixed(2)} km · ${fmtTime(data.duration)}` : '';
+  }
+  const incomplete = key === 'name' ? 0 : rows.filter(row => !Number.isFinite(metrics(row)?.[key])).length;
+  status.textContent = incomplete ? `有 ${incomplete} 趟無法讀取排序資訊，已排在清單最後。` : '';
+  options.replaceChildren(...rows.map(row => row.label));
+  options.scrollTop = 0;
+}
 
 async function listHistory() {
   const status = $('historyStatus');
@@ -23,7 +80,7 @@ async function listHistory() {
   const options = $('historyOptions');
   const importButton = $('historyImport');
   const retry = $('historyRetry');
-  historyBusy = true;
+  setHistoryBusy(true);
   retry.hidden = choices.hidden = importButton.hidden = importButton.disabled = true;
   options.replaceChildren();
   status.textContent = '正在讀取歷史紀錄…';
@@ -31,17 +88,18 @@ async function listHistory() {
     const response = await fetch(`https://api.github.com/repos/${repository}/contents/${historyFolder}?ref=main`, { cache: 'no-cache' });
     if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
     const entries = response.ok ? await response.json() : [];
-    const files = entries.filter(entry => entry.type === 'file' && /\.(fit|gpx)$/i.test(entry.name))
-      .sort((a, b) => b.name.localeCompare(a.name, 'zh-Hant', { numeric: true }));
+    const files = entries.filter(entry => entry.type === 'file' && /\.(fit|gpx)$/i.test(entry.name));
     options.append(...files.map(({ name, sha }) => el('label', {},
-      el('input', { type: 'checkbox', value: name, 'data-sha': sha }), name)));
-    status.textContent = files.length ? '' : '目前沒有可匯入的 FIT 或 GPX 紀錄。';
+      el('input', { type: 'checkbox', value: name, 'data-sha': sha }),
+      el('span', {}, el('span', {}, name), el('small', { 'aria-hidden': 'true' })))));
     choices.hidden = importButton.hidden = !files.length;
+    if (files.length) await sortHistory();
+    else status.textContent = '目前沒有可匯入的 FIT 或 GPX 紀錄。';
   } catch {
     status.textContent = '暫時無法從 GitHub 讀取歷史紀錄，請稍後重試。';
     retry.hidden = false;
   } finally {
-    historyBusy = false;
+    setHistoryBusy(false);
   }
 }
 
@@ -54,10 +112,19 @@ function historyFile(input) {
     return response;
   }
   return {
-    name,
+    name, historySha: input.dataset.sha,
     text: async () => (await read()).text(),
     arrayBuffer: async () => (await read()).arrayBuffer(),
   };
+}
+
+async function readRideSource(file) {
+  if (/\.fit$/i.test(file.name)) {
+    const { parseFIT } = await import('./fit.js?v=2.0.7');
+    return parseFIT(await file.arrayBuffer());
+  }
+  if (/\.gpx$/i.test(file.name)) return parseGPX(await file.text());
+  throw new Error('請使用 FIT 或 GPX 檔案');
 }
 
 function sameActivity(a, b) {
@@ -87,16 +154,9 @@ async function importFiles(files) {
   const errs = [], notes = [];
   for (const f of files) {
     try {
-      let source;
-      if (/\.fit$/i.test(f.name)) {
-        const { parseFIT } = await import('./fit.js?v=2.0.7');
-        source = await parseFIT(await f.arrayBuffer());
-      } else if (/\.gpx$/i.test(f.name)) {
-        source = parseGPX(await f.text());
-      } else {
-        throw new Error('請使用 FIT 或 GPX 檔案');
-      }
+      const source = await readRideSource(f);
       const ride = prepareRide(source, { id: 'r' + (++uid), fileName: f.name });
+      if (f.historySha) historyMetrics.set(f.historySha, rideMetrics(ride));
       const same = rides.find(r => (r.ride.format !== ride.format || r.ride.fileName === ride.fileName)
         && sameActivity(r.ride, ride));
       if (!same) {
@@ -175,20 +235,27 @@ $('historyBtn').onclick = () => {
   if (!panel.hidden && !historyBusy) listHistory();
 };
 $('historyRetry').onclick = listHistory;
-const checkedHistory = () => $('historyOptions').querySelectorAll('input:checked');
+$('historySort').onchange = async () => {
+  setHistoryBusy(true);
+  try {
+    await sortHistory();
+  } finally {
+    setHistoryBusy(false);
+  }
+};
 $('historyOptions').onchange = () => { $('historyImport').disabled = !checkedHistory().length; };
 $('historyImport').onclick = async () => {
   const selected = [...checkedHistory()];
-  historyBusy = $('historyChoices').disabled = $('historyImport').disabled = true;
+  const previousStatus = $('historyStatus').textContent;
+  setHistoryBusy(true);
   $('historyStatus').textContent = `正在匯入 ${selected.length} 趟騎乘…`;
   try {
     if (await addFiles(selected.map(historyFile))) {
       for (const input of selected) input.checked = false;
     }
   } finally {
-    $('historyStatus').textContent = '';
-    historyBusy = $('historyChoices').disabled = false;
-    $('historyImport').disabled = !checkedHistory().length;
+    $('historyStatus').textContent = previousStatus;
+    setHistoryBusy(false);
   }
 };
 $('fileInput').addEventListener('change', (e) => { addFiles([...e.target.files]); e.target.value = ''; });

@@ -1,6 +1,6 @@
 # 騎乘分析 2.0
 
-**[開啟騎乘分析](https://evantilu.github.io/bike-visualization-and-analyses/?v=2.0.8)** · **[下載示範 FIT](https://evantilu.github.io/bike-visualization-and-analyses/docs/demo/sample-ride.fit)**
+**[開啟騎乘分析](https://evantilu.github.io/bike-visualization-and-analyses/?v=2.0.9)** · **[下載示範 FIT](https://evantilu.github.io/bike-visualization-and-analyses/docs/demo/sample-ride.fit)**
 
 匯入碼錶的 **FIT** 或 Strava 的 **GPX**，在同一畫面對照路線、速度、功率和心率。可以查看單趟的 Lap，也可以把兩趟騎乘沿同一路線對齊，找出在哪裡拉開差距。活動檔在瀏覽器內分析，無需登入。
 
@@ -66,7 +66,7 @@
 - **檔案來源**。可使用碼錶或平台匯出的 FIT。在 Strava 網頁版開啟自己的活動，可從活動選單匯出 GPX。感測器曲線會依檔案提供的欄位顯示。
 - **時間與距離**。FIT 有碼錶摘要時優先顯示碼錶計時。路線比較採 GPS 與移動時間計算，可能與碼錶摘要不同。時間軸會保留暫停造成的空白，距離軸有完整碼錶距離時優先使用。
 - **對齊與估算**。兩趟比較會排除判定為偏離路線的路段。多圈、環線和 GPS 品質差的路線可能對齊不準。由速度與坡度推算的瓦數對風、騎姿和路況敏感。
-- **歷史紀錄**。把 FIT 或 GPX 放進 `main` 分支的 [`training-history/`](training-history/) 資料夾即可。每次開啟歷史選單會讀取 GitHub 的檔案清單，網站只下載勾選的活動檔。
+- **歷史紀錄**。把 FIT 或 GPX 放進 `main` 分支的 [`training-history/`](training-history/) 資料夾即可。每次開啟歷史選單會讀取 GitHub 的檔案清單，可按名稱、騎乘日期、距離或騎乘時長排序。依騎乘資料排序時，瀏覽器會先讀取活動檔的排序資訊。
 - **隱私**。本機活動檔在瀏覽器內讀取。放在公開 repo 的歷史活動任何人都可下載。地圖服務會收到顯示區域的圖磚請求。
 
 ## 開發

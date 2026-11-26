@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<link rel="stylesheet" href="css/app.css?v=2.0.8">
+<link rel="stylesheet" href="css/app.css?v=2.0.9">
 </head>
 <body>
 <div class="wrap">
@@ -31,6 +31,18 @@
       <p class="note" id="historyStatus" role="status"></p>
       <fieldset id="historyChoices" hidden>
         <legend>選擇歷史騎乘（可多選）</legend>
+        <label class="history-sort">排序
+          <select id="historySort">
+            <option value="name-desc">名稱（降冪）</option>
+            <option value="name-asc">名稱（升冪）</option>
+            <option value="start-desc">騎乘日期（最新優先）</option>
+            <option value="start-asc">騎乘日期（最早優先）</option>
+            <option value="distance-desc">距離（最遠優先）</option>
+            <option value="distance-asc">距離（最近優先）</option>
+            <option value="duration-desc">騎乘時長（最長優先）</option>
+            <option value="duration-asc">騎乘時長（最短優先）</option>
+          </select>
+        </label>
         <div class="history-options" id="historyOptions"></div>
       </fieldset>
       <button class="btn primary" id="historyImport" hidden disabled>匯入所選騎乘</button>
@@ -58,6 +70,6 @@
   </footer>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script type="module" src="js/app.js?v=2.0.8"></script>
+<script type="module" src="js/app.js?v=2.0.9"></script>
 </body>
 </html>

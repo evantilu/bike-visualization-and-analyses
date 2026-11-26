@@ -35,9 +35,12 @@ a{color:var(--blue)}
 .history .note:empty{display:none}
 .history fieldset{margin:0 0 10px;padding:0;min-width:0;border:0}
 .history legend{font-weight:600;margin-bottom:6px}
+.history-sort{display:flex;align-items:center;gap:8px;margin-bottom:8px;color:var(--muted)}
+.history-sort select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
 .history-options{max-height:16rem;overflow:auto}
 .history-options label{display:flex;align-items:center;gap:8px;padding:5px 0;overflow-wrap:anywhere;cursor:pointer}
 .history-options input{flex:none}
+.history-options small{display:block;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 .history .btn:not([hidden]){margin-top:6px}
 .tablewrap{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:13px}
